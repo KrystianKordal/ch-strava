@@ -1,4 +1,5 @@
-import { clubs, challenge, cronSecret } from '@/lib/config';
+import { clubs, challenge, cronSecret, isProd } from '@/lib/config';
+import { safeEqual } from '@/lib/safe-equal';
 import { weeksBetween, weekLabel, weekKeyFor } from '@/lib/week';
 
 export const dynamic = 'force-dynamic';
@@ -15,7 +16,9 @@ export default async function ManualPage({
 }) {
   const sp = await searchParams;
   const key = sp.key ?? '';
-  const locked = cronSecret !== '' && key !== cronSecret;
+  // Z sekretem: trzeba podać poprawny klucz. Bez sekretu: dozwolone tylko
+  // lokalnie (w produkcji fail-closed, tak jak /api/manual).
+  const locked = cronSecret !== '' ? !safeEqual(key, cronSecret) : isProd;
 
   if (locked) {
     return (

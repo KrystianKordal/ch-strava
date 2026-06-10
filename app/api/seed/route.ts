@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { DateTime } from 'luxon';
 import { db, ensureSchema, syncClubs } from '@/lib/db';
-import { clubs, challenge, timezone, allowSeed } from '@/lib/config';
+import { clubs, challenge, timezone, allowSeed, isProd } from '@/lib/config';
 import { weekKeyFor, weekRange, weeksBetween } from '@/lib/week';
 
 export const runtime = 'nodejs';
@@ -18,6 +18,11 @@ const rnd = (min: number, max: number) => Math.floor(Math.random() * (max - min 
 const pick = <T,>(arr: T[]): T => arr[rnd(0, arr.length - 1)];
 
 export async function GET() {
+  // Endpoint kasuje WSZYSTKIE aktywności — w produkcji niedostępny bez wyjątku,
+  // żeby przypadkowe ALLOW_SEED=1 nie dało nikomu kasowania bazy.
+  if (isProd) {
+    return NextResponse.json({ error: 'Seedowanie wyłączone na produkcji.' }, { status: 403 });
+  }
   if (!allowSeed) {
     return NextResponse.json({ error: 'Seedowanie wyłączone (ustaw ALLOW_SEED=1).' }, { status: 403 });
   }

@@ -1,5 +1,6 @@
 import { db } from './db';
 import { strava, appUrl } from './config';
+import { encryptToken, decryptToken } from './token-crypto';
 
 // Klient API Strava: OAuth (autoryzacja per klub) + pobieranie aktywności.
 // Tokeny trzymamy w tabeli `tokens` (jeden wiersz na klub).
@@ -26,8 +27,12 @@ export type StravaActivity = {
   total_elevation_gain?: number;
 };
 
-/** URL ekranu autoryzacji dla danego klubu (state = clubId). */
-export function authorizeUrl(clubId: number): string {
+/**
+ * URL ekranu autoryzacji dla danego klubu. `state` to ciąg anty-CSRF
+ * (`<clubId>.<nonce>`) — nonce jest dodatkowo zapisany w cookie i sprawdzany
+ * w callbacku, żeby cudzy `code` nie mógł podszyć się pod naszą sesję.
+ */
+export function authorizeUrl(clubId: number, state: string): string {
   const params = new URLSearchParams({
     client_id: strava.clientId,
     redirect_uri: `${appUrl()}/api/callback`,
@@ -38,7 +43,7 @@ export function authorizeUrl(clubId: number): string {
     // Jeśli feed klubowy okaże się wymagać 'activity:read', zmień na
     // 'read,activity:read' — to wciąż nie daje aktywności prywatnych.
     scope: 'read',
-    state: String(clubId),
+    state,
   });
   return `https://www.strava.com/oauth/authorize?${params}`;
 }
@@ -131,8 +136,8 @@ async function loadToken(clubId: number): Promise<TokenRow | null> {
   if (!row) return null;
   return {
     club_id: Number(row.club_id),
-    access_token: String(row.access_token),
-    refresh_token: String(row.refresh_token),
+    access_token: decryptToken(String(row.access_token)),
+    refresh_token: decryptToken(String(row.refresh_token)),
     expires_at: Number(row.expires_at),
     athlete_name: row.athlete_name ? String(row.athlete_name) : null,
   };
@@ -147,7 +152,13 @@ async function saveToken(clubId: number, data: TokenResponse, athleteName: strin
             refresh_token = excluded.refresh_token,
             expires_at = excluded.expires_at,
             athlete_name = COALESCE(excluded.athlete_name, tokens.athlete_name)`,
-    args: [clubId, data.access_token, data.refresh_token, data.expires_at, athleteName],
+    args: [
+      clubId,
+      encryptToken(data.access_token),
+      encryptToken(data.refresh_token),
+      data.expires_at,
+      athleteName,
+    ],
   });
   return {
     club_id: clubId,
