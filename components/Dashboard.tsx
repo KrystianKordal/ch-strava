@@ -307,6 +307,7 @@ function WeeklyTable({ data }: { data: DashboardData }) {
       {data.weekly.length === 0 ? (
         <p className="muted">Brak tygodni do wyświetlenia.</p>
       ) : (
+        <div className="table-wrap">
         <table>
           <thead>
             <tr>
@@ -353,6 +354,7 @@ function WeeklyTable({ data }: { data: DashboardData }) {
             })}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

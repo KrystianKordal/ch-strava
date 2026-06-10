@@ -270,3 +270,44 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
     padding: 10px 18px; border-radius: 9px; font-weight: 600; cursor: pointer;
     box-shadow: 0 2px 8px rgba(5, 52, 199, .25);
 }
+
+/* ---------- Mobile ---------- */
+/* Tabela tygodniowa: przewijanie w poziomie zamiast łamania kolumn. */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table-wrap table { min-width: 460px; }
+.table-wrap th, .table-wrap td { white-space: nowrap; }
+
+@media (max-width: 600px) {
+    #app { padding: 16px 14px 48px; }
+    .topbar { margin-bottom: 20px; gap: 12px; }
+    .topbar h1 { font-size: 18px; }
+    .ch-logo { height: 24px; }
+    .topbar-meta { width: 100%; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+    .topbar-meta .muted { font-size: 12px; }
+
+    .card { padding: 16px; }
+    .card h2 { margin-bottom: 12px; }
+
+    .podium { gap: 8px; }
+    .podium-col { padding: 12px 8px; border-radius: 12px; }
+    .podium-col .medal { font-size: 22px; }
+    .podium-col .club { font-size: 13px; }
+    .podium-col .wins { font-size: 24px; }
+    .podium-col .muted { font-size: 12px; }
+
+    .tile { padding: 14px; }
+    .tile .value { font-size: 22px; }
+
+    th, td { padding: 8px 10px; }
+
+    .sport-row .sname { width: 84px; font-size: 12px; }
+    .sport-row .sval { width: 54px; }
+
+    .manual-form .row2 { flex-direction: column; gap: 14px; }
+    .manual-form .btn { align-self: stretch; text-align: center; }
+}
+
+@media (max-width: 380px) {
+    .podium { flex-wrap: wrap; }
+    .podium-col { flex: 1 1 100%; }
+}
