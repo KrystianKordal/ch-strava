@@ -11,7 +11,6 @@ export const dynamic = 'force-dynamic';
 // Dane DEMO do podglądu bez prawdziwego konta Strava. Dostępne tylko gdy
 // ALLOW_SEED=1. NIE używać na produkcji z prawdziwymi danymi.
 const FIRST = ['Anna', 'Marek', 'Kasia', 'Tomek', 'Ola', 'Piotr', 'Magda', 'Bartek', 'Ewa', 'Kuba', 'Zofia', 'Michał'];
-const INIT = ['K.', 'N.', 'W.', 'L.', 'S.', 'B.', 'M.', 'Z.', 'P.', 'C.'];
 const SPORTS = ['Run', 'Ride', 'Walk', 'Swim', 'Hike', 'WeightTraining', 'VirtualRide'];
 const NAMES = ['Poranny bieg', 'Trening interwałowy', 'Spokojna jazda', 'Długi wybieg', 'Po pracy', 'Weekendowa wycieczka', 'Basen', 'Siłownia'];
 
@@ -42,10 +41,9 @@ export async function GET() {
 
   const athletesByClub = new Map<number, { name: string; energy: number }[]>();
   for (const club of clubs) {
-    const list = Array.from({ length: rnd(6, 11) }, () => ({
-      name: `${pick(FIRST)} ${pick(INIT)}`,
-      energy: rnd(40, 130) / 100,
-    }));
+    // Same imiona, unikalne w obrębie klubu (jak w prawdziwych danych z feedu).
+    const pool = [...FIRST].sort(() => Math.random() - 0.5).slice(0, rnd(6, 11));
+    const list = pool.map((name) => ({ name, energy: rnd(40, 130) / 100 }));
     athletesByClub.set(club.id, list);
   }
 

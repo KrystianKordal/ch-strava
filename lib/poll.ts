@@ -76,8 +76,10 @@ export async function runPoll(): Promise<PollResult> {
 
     let newCount = 0;
     for (const a of activities) {
-      const athlete =
-        [a.athlete?.firstname, a.athlete?.lastname].filter(Boolean).join(' ').trim() || 'Nieznany';
+      // Tylko imię (firstname) — w obrębie klubu imiona się nie powtarzają,
+      // więc inicjał nazwiska jest zbędny. Strava w feedzie klubowym i tak
+      // oddaje nazwisko tylko jako inicjał.
+      const athlete = (a.athlete?.firstname ?? '').trim() || 'Nieznany';
       const fp = fingerprint(athlete, a);
       const res = await c.execute({
         sql: `INSERT INTO activities

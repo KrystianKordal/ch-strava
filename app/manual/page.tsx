@@ -75,7 +75,7 @@ export default async function ManualPage({
 
         <label>
           Zawodnik
-          <input name="athlete" type="text" placeholder="np. Anna K." required />
+          <input name="athlete" type="text" placeholder="np. Anna" required />
         </label>
 
         <label>
