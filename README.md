@@ -49,6 +49,7 @@ Wypchnij repo na GitHub i zaimportuj w Vercel (albo `vercel`). Ustaw **Environme
 | `APP_URL` | `https://twoja-app.vercel.app` |
 | `DATABASE_URL` | connection string z Supabase (pooler Transaction, port 6543) |
 | `POLL_SECRET` | dowolny losowy ciąg (chroni ręczny trigger `/api/poll`) |
+| `DASHBOARD_PASSWORD` | hasło do dashboardu (Basic Auth na `/` i `/api/stats`) |
 | `ALLOW_SEED` | **nie ustawiaj** na produkcji (zostaw puste) |
 
 ### 4. Autoryzacja drużyn
@@ -95,8 +96,8 @@ legacy-php/             # poprzednia wersja PHP (referencja, poza buildem)
 ```
 
 ## Endpointy
-- `/` — dashboard
-- `/auth` — autoryzacja drużyn
-- `/api/stats` — JSON ze statystykami (odświeżany co 5 min po stronie klienta)
+- `/` — dashboard 🔒 (Basic Auth, `DASHBOARD_PASSWORD`)
+- `/auth` — autoryzacja drużyn (otwarte — koledzy autoryzują bez hasła)
+- `/api/stats` — JSON ze statystykami 🔒 (odświeżany co 5 min po stronie klienta)
 - `/api/poll` — ręczny trigger pollingu, `?key=<POLL_SECRET>` (chroniony `POLL_SECRET`)
 - `/api/seed` — dane demo (tylko gdy `ALLOW_SEED=1`)
