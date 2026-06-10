@@ -74,6 +74,13 @@ Endpoint pobiera aktywności wszystkich drużyn i zapisuje nowe (deduplikacja po
 >
 > ⚠️ Regularny polling jest kluczowy — tydzień aktywności ustalamy na podstawie momentu pobrania.
 
+### 6. Ręczne dopisanie aktywności (uzupełnienie braków)
+Skoro pierwszy poll tylko ustala bazę odniesienia, aktywności z początku wyzwania (zanim ruszył polling) trzeba dopisać ręcznie. Wejdź na:
+```
+https://twoja-app.vercel.app/manual?key=<POLL_SECRET>
+```
+i wypełnij formularz (drużyna, tydzień, zawodnik, sport, czas, dystans). Wpisy mają `counted=true`, więc **liczą się** do wyników wybranego tygodnia. Dane podejrzyj na stronie klubu w Stravie. Można też wołać `POST /api/manual` JSON-em (`clubId`, `athlete`, `movingTime` w sekundach, `weekKey`, …).
+
 ---
 
 ## Konfiguracja wyzwania
