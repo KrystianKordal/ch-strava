@@ -1,0 +1,97 @@
+# Strava: letnie wyzwanie — dashboard (Next.js + Turso)
+
+Jednostronicowy dashboard rywalizacji **3 drużyn** na Strava, gotowy do wdrożenia na **Vercel**.
+
+- **Frontend:** Next.js (App Router) + React, motyw CustomerHero
+- **Baza:** Turso / libSQL (kompatybilna ze SQLite)
+- **Backend:** API routes (OAuth, polling, statystyki) + **Vercel Cron**
+
+## Zasady wyzwania
+- Każdy **tydzień** wygrywa drużyna z największą liczbą **godzin aktywności** (`moving_time`).
+- Wygrywa drużyna z **największą liczbą wygranych tygodni** (remis → łączny czas).
+- Wyzwanie trwa **8 cze – 31 lip 2026** (`lib/config.ts`). Przed startem widać „okres przygotowawczy", ale po starcie **liczą się tylko aktywności z okna wyzwania** — wcześniejsze są pomijane.
+
+---
+
+## Szybki start lokalnie
+
+```bash
+npm install
+cp .env.example .env.local      # ustaw przynajmniej ALLOW_SEED=1
+npm run dev                     # http://localhost:3000
+# wygeneruj dane demo:
+curl http://localhost:3000/api/seed
+```
+
+Bez `TURSO_DATABASE_URL` używana jest lokalna baza plikowa `file:./data/local.db`.
+
+---
+
+## Wdrożenie na Vercel
+
+### 1. Baza Turso
+```bash
+# https://docs.turso.tech — instalacja CLI
+turso db create strava-wyzwanie
+turso db show strava-wyzwanie --url          # → TURSO_DATABASE_URL
+turso db tokens create strava-wyzwanie       # → TURSO_AUTH_TOKEN
+```
+
+### 2. Aplikacja Strava
+Na <https://www.strava.com/settings/api> utwórz aplikację. **Authorization Callback Domain** = Twoja domena Vercel (np. `twoja-app.vercel.app`). Zanotuj **Client ID** i **Client Secret**.
+
+### 3. Deploy
+Wypchnij repo na GitHub i zaimportuj w Vercel (albo `vercel`). Ustaw **Environment Variables**:
+
+| Zmienna | Wartość |
+|---|---|
+| `STRAVA_CLIENT_ID` | z ustawień aplikacji Strava |
+| `STRAVA_CLIENT_SECRET` | z ustawień aplikacji Strava |
+| `APP_URL` | `https://twoja-app.vercel.app` |
+| `TURSO_DATABASE_URL` | z `turso db show` |
+| `TURSO_AUTH_TOKEN` | z `turso db tokens create` |
+| `CRON_SECRET` | dowolny losowy ciąg (chroni `/api/poll`) |
+| `ALLOW_SEED` | **nie ustawiaj** na produkcji (zostaw puste) |
+
+### 4. Autoryzacja drużyn
+Wejdź na `https://twoja-app.vercel.app/auth` i przy każdej drużynie kliknij **Autoryzuj**, logując się kontem **członka tej drużyny** (każdą może autoryzować inna osoba — to Opcja B, nie musisz być we wszystkich klubach).
+
+### 5. Polling
+`vercel.json` konfiguruje **Vercel Cron** na `/api/poll` co godzinę.
+
+> ⚠️ **Plan Hobby na Vercel uruchamia crony maksymalnie raz dziennie.** Do pollingu co godzinę potrzebny jest plan **Pro**, albo darmowy zewnętrzny scheduler (np. GitHub Actions / cron-job.org) uderzający w:
+> ```
+> GET https://twoja-app.vercel.app/api/poll
+> Authorization: Bearer <CRON_SECRET>
+> ```
+> Regularny polling jest kluczowy — Strava oddaje tylko ostatnie ~200 aktywności klubu **bez dat**, więc tydzień ustalamy na podstawie momentu pobrania.
+
+---
+
+## Konfiguracja wyzwania
+Drużyny (ID/nazwa/kolor) i daty są w [`lib/config.ts`](lib/config.ts) — nie są tajne, więc trzymane w repo. Zmiana ID drużyn automatycznie usuwa dane starych klubów (`syncClubs`).
+
+## Struktura
+```
+app/
+  page.tsx              # dashboard (SSR → komponent kliencki)
+  auth/page.tsx         # autoryzacja drużyn (status + linki)
+  api/
+    stats/route.ts      # JSON ze statystykami
+    poll/route.ts       # cron/manual: pobiera aktywności
+    auth/route.ts       # start OAuth (redirect do Strava)
+    callback/route.ts   # callback OAuth → zapis tokenu
+    seed/route.ts       # dane demo (tylko ALLOW_SEED=1)
+components/Dashboard.tsx # render dashboardu
+lib/
+  config.ts  db.ts  strava.ts  week.ts  stats.ts  poll.ts
+public/                 # logo + favicon CustomerHero
+legacy-php/             # poprzednia wersja PHP (referencja, poza buildem)
+```
+
+## Endpointy
+- `/` — dashboard
+- `/auth` — autoryzacja drużyn
+- `/api/stats` — JSON ze statystykami (odświeżany co 5 min po stronie klienta)
+- `/api/poll` — polling (chroniony `CRON_SECRET`)
+- `/api/seed` — dane demo (tylko gdy `ALLOW_SEED=1`)
