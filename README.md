@@ -4,7 +4,7 @@ Jednostronicowy dashboard rywalizacji **3 drużyn** na Strava, gotowy do wdroże
 
 - **Frontend:** Next.js (App Router) + React, motyw CustomerHero
 - **Baza:** Turso / libSQL (kompatybilna ze SQLite)
-- **Backend:** API routes (OAuth, polling, statystyki) + **Vercel Cron**
+- **Backend:** API routes (OAuth, polling, statystyki) — polling odpalany ręcznie przez `/api/poll`
 
 ## Zasady wyzwania
 - Każdy **tydzień** wygrywa drużyna z największą liczbą **godzin aktywności** (`moving_time`).
@@ -50,21 +50,28 @@ Wypchnij repo na GitHub i zaimportuj w Vercel (albo `vercel`). Ustaw **Environme
 | `APP_URL` | `https://twoja-app.vercel.app` |
 | `TURSO_DATABASE_URL` | z `turso db show` |
 | `TURSO_AUTH_TOKEN` | z `turso db tokens create` |
-| `CRON_SECRET` | dowolny losowy ciąg (chroni `/api/poll`) |
+| `POLL_SECRET` | dowolny losowy ciąg (chroni ręczny trigger `/api/poll`) |
 | `ALLOW_SEED` | **nie ustawiaj** na produkcji (zostaw puste) |
 
 ### 4. Autoryzacja drużyn
 Wejdź na `https://twoja-app.vercel.app/auth` i przy każdej drużynie kliknij **Autoryzuj**, logując się kontem **członka tej drużyny** (każdą może autoryzować inna osoba — to Opcja B, nie musisz być we wszystkich klubach).
 
-### 5. Polling
-`vercel.json` konfiguruje **Vercel Cron** na `/api/poll` co godzinę.
+### 5. Polling (ręczny trigger)
+Nie ma już crona — dane odświeżasz sam, uderzając w endpoint `/api/poll`. Najprościej wkleić w przeglądarkę / zakładkę:
+```
+https://twoja-app.vercel.app/api/poll?key=<POLL_SECRET>
+```
+albo z terminala:
+```bash
+curl "https://twoja-app.vercel.app/api/poll?key=<POLL_SECRET>"
+# lub nagłówkiem:
+curl -H "Authorization: Bearer <POLL_SECRET>" https://twoja-app.vercel.app/api/poll
+```
+Endpoint pobiera aktywności wszystkich drużyn i zapisuje nowe (deduplikacja po odcisku palca). Zwraca JSON z podsumowaniem (`seen`/`new` na drużynę).
 
-> ⚠️ **Plan Hobby na Vercel uruchamia crony maksymalnie raz dziennie.** Do pollingu co godzinę potrzebny jest plan **Pro**, albo darmowy zewnętrzny scheduler (np. GitHub Actions / cron-job.org) uderzający w:
-> ```
-> GET https://twoja-app.vercel.app/api/poll
-> Authorization: Bearer <CRON_SECRET>
-> ```
-> Regularny polling jest kluczowy — Strava oddaje tylko ostatnie ~200 aktywności klubu **bez dat**, więc tydzień ustalamy na podstawie momentu pobrania.
+> 💡 Chcesz to mieć automatycznie? Podłącz dowolny zewnętrzny scheduler (GitHub Actions, cron-job.org, EasyCron) uderzający w ten sam URL co godzinę.
+>
+> ⚠️ Regularny polling jest kluczowy — Strava oddaje tylko ostatnie ~200 aktywności klubu **bez dat**, więc tydzień ustalamy na podstawie momentu pobrania.
 
 ---
 
@@ -78,7 +85,7 @@ app/
   auth/page.tsx         # autoryzacja drużyn (status + linki)
   api/
     stats/route.ts      # JSON ze statystykami
-    poll/route.ts       # cron/manual: pobiera aktywności
+    poll/route.ts       # ręczny trigger: pobiera aktywności
     auth/route.ts       # start OAuth (redirect do Strava)
     callback/route.ts   # callback OAuth → zapis tokenu
     seed/route.ts       # dane demo (tylko ALLOW_SEED=1)
@@ -93,5 +100,5 @@ legacy-php/             # poprzednia wersja PHP (referencja, poza buildem)
 - `/` — dashboard
 - `/auth` — autoryzacja drużyn
 - `/api/stats` — JSON ze statystykami (odświeżany co 5 min po stronie klienta)
-- `/api/poll` — polling (chroniony `CRON_SECRET`)
+- `/api/poll` — ręczny trigger pollingu, `?key=<POLL_SECRET>` (chroniony `POLL_SECRET`)
 - `/api/seed` — dane demo (tylko gdy `ALLOW_SEED=1`)

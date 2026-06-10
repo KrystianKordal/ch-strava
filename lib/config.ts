@@ -27,7 +27,9 @@ export function appUrl(): string {
   return (process.env.APP_URL ?? 'http://localhost:3000').replace(/\/$/, '');
 }
 
-export const cronSecret = process.env.CRON_SECRET ?? '';
+// Sekret chroniący ręczny trigger /api/poll. POLL_SECRET to nowa nazwa,
+// CRON_SECRET zostaje jako alias dla kompatybilności wstecznej.
+export const cronSecret = process.env.POLL_SECRET ?? process.env.CRON_SECRET ?? '';
 export const allowSeed = process.env.ALLOW_SEED === '1';
 
 export function clubById(id: number): Club | undefined {
