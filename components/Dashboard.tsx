@@ -95,7 +95,7 @@ export default function Dashboard({
         {data && <Content data={data} />}
       </main>
 
-      <footer className="footer muted">Dane ze Strava Club API • dashboard na Next.js + Turso</footer>
+      <footer className="footer muted">Dane ze Strava Club API • dashboard na Next.js + Supabase</footer>
     </div>
   );
 }

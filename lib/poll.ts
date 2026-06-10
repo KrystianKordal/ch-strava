@@ -61,10 +61,11 @@ export async function runPoll(): Promise<PollResult> {
         [a.athlete?.firstname, a.athlete?.lastname].filter(Boolean).join(' ').trim() || 'Nieznany';
       const fp = fingerprint(athlete, a);
       const res = await c.execute({
-        sql: `INSERT OR IGNORE INTO activities
+        sql: `INSERT INTO activities
                 (club_id, fingerprint, athlete_name, activity_name, type, sport_type,
                  distance, moving_time, elapsed_time, elevation, week_key, first_seen)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT (club_id, fingerprint) DO NOTHING`,
         args: [
           club.id,
           fp,

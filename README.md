@@ -1,9 +1,9 @@
-# Strava: letnie wyzwanie — dashboard (Next.js + Turso)
+# Strava: letnie wyzwanie — dashboard (Next.js + Supabase)
 
 Jednostronicowy dashboard rywalizacji **3 drużyn** na Strava, gotowy do wdrożenia na **Vercel**.
 
 - **Frontend:** Next.js (App Router) + React, motyw CustomerHero
-- **Baza:** Turso / libSQL (kompatybilna ze SQLite)
+- **Baza:** Supabase (Postgres), przez `postgres.js`
 - **Backend:** API routes (OAuth, polling, statystyki) — polling odpalany ręcznie przez `/api/poll`
 
 ## Zasady wyzwania
@@ -17,25 +17,24 @@ Jednostronicowy dashboard rywalizacji **3 drużyn** na Strava, gotowy do wdroże
 
 ```bash
 npm install
-cp .env.example .env.local      # ustaw przynajmniej ALLOW_SEED=1
+cp .env.example .env.local      # ustaw DATABASE_URL (Supabase) i ALLOW_SEED=1
 npm run dev                     # http://localhost:3000
 # wygeneruj dane demo:
 curl http://localhost:3000/api/seed
 ```
 
-Bez `TURSO_DATABASE_URL` używana jest lokalna baza plikowa `file:./data/local.db`.
+Aplikacja wymaga `DATABASE_URL` (connection string z Supabase) — lokalnie możesz wskazać ten sam projekt co produkcja albo własnego Postgresa. Schemat tabel tworzy się sam przy pierwszym zapytaniu (`ensureSchema()` w [`lib/db.ts`](lib/db.ts)).
 
 ---
 
 ## Wdrożenie na Vercel
 
-### 1. Baza Turso
-```bash
-# https://docs.turso.tech — instalacja CLI
-turso db create strava-wyzwanie
-turso db show strava-wyzwanie --url          # → TURSO_DATABASE_URL
-turso db tokens create strava-wyzwanie       # → TURSO_AUTH_TOKEN
-```
+### 1. Baza Supabase
+1. Na [supabase.com](https://supabase.com) utwórz projekt (zaloguj się np. przez GitHub).
+2. **Project → Settings → Database → Connection string** — skopiuj string z poolera **Transaction** (port `6543`); to będzie `DATABASE_URL`.
+3. Nic więcej nie musisz robić ręcznie — tabele tworzą się same przy pierwszym uderzeniu w endpoint (`ensureSchema()`).
+
+> 💡 Jeśli użyjesz **integracji Vercel ↔ Supabase** z Marketplace, zmienne (`POSTGRES_URL` itd.) wstrzykną się same — aplikacja je rozpozna.
 
 ### 2. Aplikacja Strava
 Na <https://www.strava.com/settings/api> utwórz aplikację. **Authorization Callback Domain** = Twoja domena Vercel (np. `twoja-app.vercel.app`). Zanotuj **Client ID** i **Client Secret**.
@@ -48,8 +47,7 @@ Wypchnij repo na GitHub i zaimportuj w Vercel (albo `vercel`). Ustaw **Environme
 | `STRAVA_CLIENT_ID` | z ustawień aplikacji Strava |
 | `STRAVA_CLIENT_SECRET` | z ustawień aplikacji Strava |
 | `APP_URL` | `https://twoja-app.vercel.app` |
-| `TURSO_DATABASE_URL` | z `turso db show` |
-| `TURSO_AUTH_TOKEN` | z `turso db tokens create` |
+| `DATABASE_URL` | connection string z Supabase (pooler Transaction, port 6543) |
 | `POLL_SECRET` | dowolny losowy ciąg (chroni ręczny trigger `/api/poll`) |
 | `ALLOW_SEED` | **nie ustawiaj** na produkcji (zostaw puste) |
 

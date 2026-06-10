@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon';
-import type { InValue } from '@libsql/client';
+import type { InValue } from './db';
 import { db, ensureSchema, syncClubs } from './db';
 import { clubs as clubsConfig, challenge, timezone } from './config';
 import { weekKeyFor, weekLabel, weeksBetween } from './week';
@@ -378,7 +378,7 @@ async function highlights(
                  SUM(a.moving_time) AS moving_time, COUNT(*) AS activities
           FROM activities a JOIN clubs cl ON cl.id = a.club_id
           ${athleteQ.clause}
-          GROUP BY a.athlete_name, a.club_id
+          GROUP BY a.athlete_name, a.club_id, cl.name
           ORDER BY moving_time DESC LIMIT 1`,
     args: athleteQ.winArgs,
   });

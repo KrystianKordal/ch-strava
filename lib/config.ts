@@ -1,5 +1,5 @@
 // Konfiguracja wyzwania. Kluby i daty nie są tajne — trzymamy je w repo.
-// Dane wrażliwe (Strava, Turso) idą przez zmienne środowiskowe.
+// Dane wrażliwe (Strava, Supabase) idą przez zmienne środowiskowe.
 
 export type Club = { id: number; name: string; color: string };
 
