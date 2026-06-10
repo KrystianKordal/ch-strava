@@ -89,8 +89,15 @@ export async function ensureSchema(): Promise<void> {
       elevation     DOUBLE PRECISION NOT NULL DEFAULT 0,
       week_key      TEXT NOT NULL,
       first_seen    TEXT NOT NULL,
+      counted       BOOLEAN NOT NULL DEFAULT TRUE,
       UNIQUE (club_id, fingerprint)
     );
+
+    -- Backlog widoczny przy pierwszym kontakcie z feedem klubu zapisujemy
+    -- z counted=FALSE (tylko deduplikacja) — feed Stravy nie zwraca dat, więc
+    -- nie wiemy, z którego tygodnia są te aktywności. Migracja dla istniejących
+    -- baz, w których kolumny jeszcze nie ma.
+    ALTER TABLE activities ADD COLUMN IF NOT EXISTS counted BOOLEAN NOT NULL DEFAULT TRUE;
 
     CREATE INDEX IF NOT EXISTS idx_activities_week ON activities (week_key);
     CREATE INDEX IF NOT EXISTS idx_activities_club ON activities (club_id);

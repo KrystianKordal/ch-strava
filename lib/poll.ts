@@ -11,8 +11,21 @@ import { currentWeekKey } from './week';
 export type PollResult = {
   ran_at: string;
   week_key: string;
-  clubs: { id: number; name: string; status: string; seen?: number; new?: number }[];
+  clubs: { id: number; name: string; status: string; seen?: number; new?: number; baseline?: boolean }[];
 };
+
+/**
+ * Czy to pierwszy poll tego klubu? Feed Stravy nie zwraca dat, więc backlog
+ * widoczny przy pierwszym kontakcie zapisujemy tylko jako bazę odniesienia
+ * (counted=FALSE) — inaczej cała historia wpadłaby do bieżącego tygodnia.
+ */
+async function isFirstPoll(clubId: number): Promise<boolean> {
+  const r = await db().execute({
+    sql: 'SELECT COUNT(*) AS n FROM poll_log WHERE club_id = ?',
+    args: [clubId],
+  });
+  return Number(r.rows[0]?.n ?? 0) === 0;
+}
 
 function fingerprint(athlete: string, a: StravaActivity): string {
   return crypto
@@ -55,6 +68,12 @@ export async function runPoll(): Promise<PollResult> {
       continue;
     }
 
+    // Pierwszy poll klubu = baza odniesienia: zapisujemy backlog z counted=FALSE,
+    // żeby historia nie wpadła do bieżącego tygodnia. Liczą się dopiero
+    // aktywności zauważone w kolejnych pollach.
+    const baseline = await isFirstPoll(club.id);
+    const counted = !baseline;
+
     let newCount = 0;
     for (const a of activities) {
       const athlete =
@@ -63,8 +82,8 @@ export async function runPoll(): Promise<PollResult> {
       const res = await c.execute({
         sql: `INSERT INTO activities
                 (club_id, fingerprint, athlete_name, activity_name, type, sport_type,
-                 distance, moving_time, elapsed_time, elevation, week_key, first_seen)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 distance, moving_time, elapsed_time, elevation, week_key, first_seen, counted)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT (club_id, fingerprint) DO NOTHING`,
         args: [
           club.id,
@@ -79,6 +98,7 @@ export async function runPoll(): Promise<PollResult> {
           a.total_elevation_gain ?? 0,
           weekKey,
           now,
+          counted,
         ],
       });
       newCount += res.rowsAffected;
@@ -88,7 +108,14 @@ export async function runPoll(): Promise<PollResult> {
       sql: 'INSERT INTO poll_log (club_id, seen_count, new_count, ran_at) VALUES (?, ?, ?, ?)',
       args: [club.id, activities.length, newCount, now],
     });
-    result.clubs.push({ id: club.id, name: club.name, status: 'ok', seen: activities.length, new: newCount });
+    result.clubs.push({
+      id: club.id,
+      name: club.name,
+      status: baseline ? 'ok (baza odniesienia)' : 'ok',
+      seen: activities.length,
+      new: newCount,
+      baseline,
+    });
   }
 
   return result;

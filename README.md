@@ -66,11 +66,13 @@ curl "https://twoja-app.vercel.app/api/poll?key=<POLL_SECRET>"
 # lub nagłówkiem:
 curl -H "Authorization: Bearer <POLL_SECRET>" https://twoja-app.vercel.app/api/poll
 ```
-Endpoint pobiera aktywności wszystkich drużyn i zapisuje nowe (deduplikacja po odcisku palca). Zwraca JSON z podsumowaniem (`seen`/`new` na drużynę).
+Endpoint pobiera aktywności wszystkich drużyn i zapisuje nowe (deduplikacja po odcisku palca). Zwraca JSON z podsumowaniem (`seen`/`new`/`baseline` na drużynę).
 
+> ⚠️ **Pierwszy poll = baza odniesienia.** Strava oddaje tylko ostatnie ~200 aktywności klubu **bez dat**, więc cały backlog widoczny przy pierwszym kontakcie z feedem zapisujemy z `counted=false` (tylko deduplikacja) i **nie wliczamy** go do statystyk — inaczej cała historia wpadłaby do bieżącego tygodnia. Liczą się dopiero aktywności zauważone w kolejnych pollach. W odpowiedzi pierwszego polla zobaczysz `baseline: true`.
+>
 > 💡 Chcesz to mieć automatycznie? Podłącz dowolny zewnętrzny scheduler (GitHub Actions, cron-job.org, EasyCron) uderzający w ten sam URL co godzinę.
 >
-> ⚠️ Regularny polling jest kluczowy — Strava oddaje tylko ostatnie ~200 aktywności klubu **bez dat**, więc tydzień ustalamy na podstawie momentu pobrania.
+> ⚠️ Regularny polling jest kluczowy — tydzień aktywności ustalamy na podstawie momentu pobrania.
 
 ---
 

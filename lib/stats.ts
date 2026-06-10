@@ -49,7 +49,9 @@ function computeWindow(): Window {
 
 /** Buduje fragment WHERE z oknem czasowym + ewentualnym dodatkowym warunkiem. */
 function whereWindow(win: Window, extra?: string): { clause: string; winArgs: InValue[] } {
-  const conds: string[] = [];
+  // counted=FALSE to baza odniesienia (backlog z pierwszego polla bez znanej
+  // daty) — nigdy nie wliczamy jej do statystyk.
+  const conds: string[] = ['counted = TRUE'];
   const winArgs: InValue[] = [];
   if (extra) conds.push(extra);
   if (win.lower !== null) {
@@ -100,7 +102,7 @@ async function loadClubs(): Promise<ClubInfo[]> {
 
 async function challengeWeeks(win: Window): Promise<string[]> {
   if (win.phase === 'before') {
-    const r = await db().execute('SELECT MIN(first_seen) AS m FROM activities');
+    const r = await db().execute('SELECT MIN(first_seen) AS m FROM activities WHERE counted = TRUE');
     const min = r.rows[0]?.m;
     if (!min) return [];
     return weeksBetween(String(min).slice(0, 10), win.now.toISODate()!);
