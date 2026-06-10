@@ -32,6 +32,17 @@ export function appUrl(): string {
 export const cronSecret = process.env.POLL_SECRET ?? process.env.CRON_SECRET ?? '';
 export const allowSeed = process.env.ALLOW_SEED === '1';
 
+// Czy działamy w produkcji (Vercel/`next start`). Używane do „fail-closed":
+// brak sekretu w produkcji = endpoint zamknięty, a nie otwarty.
+export const isProd = process.env.NODE_ENV === 'production';
+
+// Klucz do szyfrowania tokenów Stravy w bazie (AES-256-GCM). W produkcji
+// wymagany; lokalnie pusty = tokeny zapisywane plaintext (wygoda dev).
+export const tokenEncryptionKey = process.env.TOKEN_ENCRYPTION_KEY ?? '';
+
+// Nazwa httpOnly cookie z nonce'em anty-CSRF dla flow OAuth (auth ↔ callback).
+export const OAUTH_STATE_COOKIE = 'strava_oauth_state';
+
 export function clubById(id: number): Club | undefined {
   return clubs.find((c) => c.id === id);
 }

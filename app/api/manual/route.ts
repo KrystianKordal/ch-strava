@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addManualActivity } from '@/lib/manual';
-import { cronSecret } from '@/lib/config';
+import { cronSecret, isProd } from '@/lib/config';
+import { safeEqual } from '@/lib/safe-equal';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -10,9 +11,10 @@ export const dynamic = 'force-dynamic';
 // z /manual (x-www-form-urlencoded) oraz JSON (do curla).
 
 function authorized(req: NextRequest, key: string | null): boolean {
-  if (!cronSecret) return true;
-  const fromHeader = req.headers.get('authorization');
-  return key === cronSecret || fromHeader === `Bearer ${cronSecret}`;
+  // Brak sekretu: otwarte tylko lokalnie. W produkcji = fail-closed.
+  if (!cronSecret) return !isProd;
+  const fromHeader = req.headers.get('authorization') ?? '';
+  return safeEqual(key ?? '', cronSecret) || safeEqual(fromHeader, `Bearer ${cronSecret}`);
 }
 
 function num(v: FormDataEntryValue | null | undefined): number {

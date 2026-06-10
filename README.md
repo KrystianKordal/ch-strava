@@ -48,9 +48,10 @@ Wypchnij repo na GitHub i zaimportuj w Vercel (albo `vercel`). Ustaw **Environme
 | `STRAVA_CLIENT_SECRET` | z ustawień aplikacji Strava |
 | `APP_URL` | `https://twoja-app.vercel.app` |
 | `DATABASE_URL` | connection string z Supabase (pooler Transaction, port 6543) |
-| `POLL_SECRET` | dowolny losowy ciąg (chroni ręczny trigger `/api/poll`) |
-| `DASHBOARD_PASSWORD` | hasło do dashboardu (Basic Auth na `/` i `/api/stats`) |
-| `ALLOW_SEED` | **nie ustawiaj** na produkcji (zostaw puste) |
+| `POLL_SECRET` | dowolny losowy ciąg (chroni `/api/poll` i `/api/manual`; w produkcji bez niego endpointy są zamknięte) |
+| `DASHBOARD_PASSWORD` | hasło do dashboardu (Basic Auth na `/` i `/api/stats`; w produkcji bez niego dashboard zwraca 503) |
+| `TOKEN_ENCRYPTION_KEY` | **wymagany na produkcji** — szyfruje tokeny Stravy w bazie (AES-256-GCM). Wygeneruj: `openssl rand -hex 32` |
+| `ALLOW_SEED` | **nie ustawiaj** na produkcji (`/api/seed` i tak jest tam zablokowany) |
 
 ### 4. Autoryzacja drużyn
 Wejdź na `https://twoja-app.vercel.app/auth` i przy każdej drużynie kliknij **Autoryzuj**, logując się kontem **członka tej drużyny** (każdą może autoryzować inna osoba — to Opcja B, nie musisz być we wszystkich klubach).
