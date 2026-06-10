@@ -98,6 +98,7 @@ body {
 .podium { display: flex; gap: 14px; align-items: flex-end; }
 .podium-col {
     flex: 1;
+    min-width: 0;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-top: 3px solid var(--border);
