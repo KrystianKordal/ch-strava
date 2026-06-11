@@ -359,20 +359,44 @@ async function topAthletes(win: Window, clubs: ClubInfo[], limit = 5) {
 
 async function sportBreakdown(win: Window) {
   const { clause, winArgs } = whereWindow(win);
+  // Rozbicie czasu per dyscyplina ORAZ per klub — pozwala pokolorować pasek
+  // segmentami w kolorach drużyn proporcjonalnie do ich udziału w dyscyplinie.
   const r = await db().execute({
     sql: `SELECT COALESCE(NULLIF(sport_type, ''), COALESCE(NULLIF(type, ''), 'Inne')) AS sport,
+                 club_id,
                  SUM(moving_time) AS moving_time,
                  COUNT(*)         AS activities
           FROM activities ${clause}
-          GROUP BY sport
-          ORDER BY moving_time DESC`,
+          GROUP BY sport, club_id`,
     args: winArgs,
   });
-  return r.rows.map((row) => ({
-    sport: s(row.sport),
-    moving_time: n(row.moving_time),
-    activities: n(row.activities),
-  }));
+
+  type SportAgg = {
+    sport: string;
+    moving_time: number;
+    activities: number;
+    clubs: { club_id: number; moving_time: number }[];
+  };
+  const bySport = new Map<string, SportAgg>();
+  for (const row of r.rows) {
+    const sport = s(row.sport);
+    let agg = bySport.get(sport);
+    if (!agg) {
+      agg = { sport, moving_time: 0, activities: 0, clubs: [] };
+      bySport.set(sport, agg);
+    }
+    const time = n(row.moving_time);
+    agg.moving_time += time;
+    agg.activities += n(row.activities);
+    agg.clubs.push({ club_id: n(row.club_id), moving_time: time });
+  }
+
+  return [...bySport.values()]
+    .map((agg) => ({
+      ...agg,
+      clubs: agg.clubs.sort((a, b) => b.moving_time - a.moving_time),
+    }))
+    .sort((a, b) => b.moving_time - a.moving_time);
 }
 
 type Highlights = {

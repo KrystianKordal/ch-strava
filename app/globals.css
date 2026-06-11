@@ -177,7 +177,8 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .sport-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 13px; }
 .sport-row .sname { width: 110px; flex-shrink: 0; color: var(--heading); }
 .sport-row .strack { flex: 1; height: 9px; background: var(--bg-elev); border-radius: 6px; overflow: hidden; }
-.sport-row .sfill { height: 100%; background: var(--accent); border-radius: 6px; }
+.sport-row .sfill { height: 100%; border-radius: 6px; overflow: hidden; display: flex; }
+.sport-row .sseg { height: 100%; }
 .sport-row .sval { width: 64px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .highlight-item { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }

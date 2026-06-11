@@ -395,6 +395,7 @@ function Athletes({ data }: { data: DashboardData }) {
 
 function Sports({ data }: { data: DashboardData }) {
   const sports = data.sport_breakdown ?? [];
+  const clubColors = new Map(data.clubs.map((c) => [c.id, c.color]));
   const max = Math.max(1, ...sports.map((s) => s.moving_time));
   return (
     <div className="card">
@@ -406,7 +407,27 @@ function Sports({ data }: { data: DashboardData }) {
           <div key={s.sport} className="sport-row">
             <span className="sname">{s.sport}</span>
             <span className="strack">
-              <span className="sfill" style={{ width: `${((s.moving_time / max) * 100).toFixed(1)}%` }} />
+              {/* Pasek wypełniony proporcjonalnie do największej dyscypliny; w środku
+                  segmenty w kolorach drużyn wg ich udziału w tej dyscyplinie. */}
+              <span className="sfill" style={{ width: `${((s.moving_time / max) * 100).toFixed(1)}%` }}>
+                {s.clubs
+                  .filter((c) => c.moving_time > 0)
+                  .map((c) => {
+                    const color = clubColors.get(c.club_id);
+                    const clubName = data.clubs.find((x) => x.id === c.club_id)?.name ?? '';
+                    return (
+                      <span
+                        key={c.club_id}
+                        className="sseg"
+                        style={{
+                          width: `${((c.moving_time / s.moving_time) * 100).toFixed(2)}%`,
+                          background: color ?? 'var(--accent)',
+                        }}
+                        title={`${clubName}: ${dur(c.moving_time)}`}
+                      />
+                    );
+                  })}
+              </span>
             </span>
             <span className="sval">{dur(s.moving_time)}</span>
           </div>
