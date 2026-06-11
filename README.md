@@ -71,7 +71,15 @@ Endpoint pobiera aktywności wszystkich drużyn i zapisuje nowe (deduplikacja po
 
 > ⚠️ **Pierwszy poll = baza odniesienia.** Strava oddaje tylko ostatnie ~200 aktywności klubu **bez dat**, więc cały backlog widoczny przy pierwszym kontakcie z feedem zapisujemy z `counted=false` (tylko deduplikacja) i **nie wliczamy** go do statystyk — inaczej cała historia wpadłaby do bieżącego tygodnia. Liczą się dopiero aktywności zauważone w kolejnych pollach. W odpowiedzi pierwszego polla zobaczysz `baseline: true`.
 >
-> 💡 Chcesz to mieć automatycznie? Podłącz dowolny zewnętrzny scheduler (GitHub Actions, cron-job.org, EasyCron) uderzający w ten sam URL co godzinę.
+> 💡 **Automatyczny polling — GitHub Actions.** W repo jest workflow [`.github/workflows/poll.yml`](.github/workflows/poll.yml), który bije w `/api/poll` **co 30 minut** (oraz na żądanie z zakładki *Actions*). Vercel Cron na planie Hobby pozwala odpalić zadanie tylko raz na dobę, dlatego harmonogram trzymamy w Actions. Ustaw dwa **sekrety repo** (*Settings → Secrets and variables → Actions*):
+> | Sekret | Wartość |
+> |---|---|
+> | `APP_URL` | `https://twoja-app.vercel.app` |
+> | `POLL_SECRET` | ta sama wartość co zmienna `POLL_SECRET` na Vercelu |
+>
+> Sekret idzie nagłówkiem `Authorization: Bearer`, nie w URL-u (nie trafia do logów). Alternatywnie ten sam URL może uderzać dowolny zewnętrzny scheduler (cron-job.org, UptimeRobot, EasyCron).
+>
+> ℹ️ Strava to nie wąskie gardło: jeden poll to ~10–12 zapytań (3 kluby × paginacja + refresh tokenu), a limity to ~200/15 min i ~2000/dobę. Poll co 30 min ≈ 580 zapytań/dobę — z dużym zapasem.
 >
 > ⚠️ Regularny polling jest kluczowy — tydzień aktywności ustalamy na podstawie momentu pobrania.
 

@@ -1,0 +1,43 @@
+name: Poll Strava
+
+# Regularny polling aktywności drużyn. Vercel Cron na planie Hobby pozwala
+# uruchamiać zadanie tylko raz na dobę, więc harmonogram trzymamy tutaj:
+# Actions bije w istniejący endpoint /api/poll co 30 minut.
+#
+# Wymagane sekrety repo (Settings → Secrets and variables → Actions):
+#   APP_URL      — bazowy URL aplikacji, np. https://twoja-app.vercel.app
+#   POLL_SECRET  — ta sama wartość co zmienna POLL_SECRET na Vercelu
+on:
+  schedule:
+    # Co 30 minut. UWAGA: harmonogram GitHub Actions bywa opóźniany
+    # (czasem o kilka–kilkanaście minut) w godzinach szczytu — to normalne.
+    - cron: '*/30 * * * *'
+  # Pozwala odpalić poll ręcznie z zakładki Actions.
+  workflow_dispatch:
+
+# Nie chcemy nakładających się uruchomień, gdyby poll się przeciągnął.
+concurrency:
+  group: poll-strava
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Wywołaj /api/poll
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          POLL_SECRET: ${{ secrets.POLL_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$POLL_SECRET" ]; then
+            echo "Brak sekretu APP_URL lub POLL_SECRET — ustaw je w Settings → Secrets → Actions." >&2
+            exit 1
+          fi
+          # Sekret idzie nagłówkiem (nie w URL-u), żeby nie trafił do logów.
+          # --fail wywróci krok przy odpowiedzi 4xx/5xx, np. 401 (zły klucz).
+          curl --fail --show-error --silent \
+               --max-time 90 \
+               --retry 3 --retry-delay 10 \
+               -H "Authorization: Bearer ${POLL_SECRET}" \
+               "${APP_URL%/}/api/poll"
