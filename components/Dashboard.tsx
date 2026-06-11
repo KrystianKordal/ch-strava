@@ -83,9 +83,6 @@ export default function Dashboard({
           <span className="muted">
             {data?.last_poll ? `Ostatnia aktualizacja: ${fmtDateTime(data.last_poll)}` : 'Brak danych z pollingu'}
           </span>
-          <button className="btn" onClick={refresh}>
-            Odśwież
-          </button>
         </div>
       </header>
 
