@@ -3,7 +3,7 @@ import { DateTime } from 'luxon';
 import type { InValue } from './db';
 import { db, ensureSchema } from './db';
 import { challenge, timezone } from './config';
-import { weekKeyFor, weekLabel, weeksBetween } from './week';
+import { weekKeyFor, weekLabel, weekRange, weeksBetween } from './week';
 
 // Port logiki Stats.php. Wszystkie statystyki filtrowane oknem czasowym
 // wyzwania; przed startem ('before') pokazujemy cały zebrany okres
@@ -153,6 +153,9 @@ type WeeklyRow = {
   clubs: WeeklyClub[];
   winners: number[];
   tie: boolean;
+  // Czy tydzień już się zakończył. Bieżący (trwający) tydzień nie ma jeszcze
+  // rozstrzygnięcia, więc nie liczymy go do klasyfikacji wygranych tygodni.
+  ended: boolean;
 };
 
 async function weeklyResults(win: Window, weeks: string[], clubs: ClubInfo[]): Promise<WeeklyRow[]> {
@@ -205,7 +208,8 @@ async function weeklyResults(win: Window, weeks: string[], clubs: ClubInfo[]): P
       }
     }
 
-    result.push({ week_key: wk, label: weekLabel(wk), clubs: clubRows, winners, tie: winners.length > 1 });
+    const ended = weekRange(wk)[1] < win.now;
+    result.push({ week_key: wk, label: weekLabel(wk), clubs: clubRows, winners, tie: winners.length > 1, ended });
   }
   return result;
 }
@@ -218,7 +222,9 @@ function buildStandings(weekly: WeeklyRow[], clubs: ClubInfo[]) {
     totalTime.set(club.id, 0);
   }
   for (const w of weekly) {
-    for (const cid of w.winners) wins.set(cid, (wins.get(cid) ?? 0) + 1);
+    // Wygrane liczymy tylko z zakończonych tygodni — bieżący trwający tydzień
+    // nie jest jeszcze rozstrzygnięty. Czas łączny zbieramy ze wszystkich.
+    if (w.ended) for (const cid of w.winners) wins.set(cid, (wins.get(cid) ?? 0) + 1);
     for (const row of w.clubs) totalTime.set(row.club_id, (totalTime.get(row.club_id) ?? 0) + row.moving_time);
   }
 

@@ -326,7 +326,8 @@ function WeeklyTable({ data }: { data: DashboardData }) {
                   <td>{w.label}</td>
                   {data.clubs.map((c) => {
                     const x = byClub.get(c.id);
-                    const winner = x?.winner;
+                    // Tydzień jeszcze trwa — nie wyróżniamy zwycięzcy, bo nie jest rozstrzygnięty.
+                    const winner = w.ended && x?.winner;
                     return (
                       <td
                         key={c.id}
@@ -338,7 +339,9 @@ function WeeklyTable({ data }: { data: DashboardData }) {
                     );
                   })}
                   <td>
-                    {winNames ? (
+                    {!w.ended ? (
+                      <span className="muted">w trakcie</span>
+                    ) : winNames ? (
                       <span className="win-badge">
                         {w.tie ? '🤝' : '🏆'} {winNames}
                       </span>
