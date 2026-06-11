@@ -27,7 +27,7 @@ function client(): ReturnType<typeof postgres> {
   sql = postgres(url, {
     ssl: sslOption(url),  // Supabase wymaga TLS; lokalny Postgres zwykle nie
     prepare: false,       // wymagane przy poolerze Supabase (PgBouncer, transaction mode)
-    max: 1,               // serverless: jedna instancja funkcji = jedno połączenie
+    max: 5,               // mała pula — pozwala zrównoleglić zapytania dashboardu (Promise.all) w jednym żądaniu; pooler Supabase (transaction mode) to obsłuży
     idle_timeout: 20,
   });
   return sql;

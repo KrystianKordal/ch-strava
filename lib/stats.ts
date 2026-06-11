@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache';
 import { DateTime } from 'luxon';
 import type { InValue } from './db';
 import { db, ensureSchema } from './db';
@@ -10,7 +11,7 @@ import { weekKeyFor, weekLabel, weeksBetween } from './week';
 
 export type Phase = 'before' | 'running' | 'ended';
 
-export type DashboardData = Awaited<ReturnType<typeof getDashboard>>;
+export type DashboardData = Awaited<ReturnType<typeof computeDashboard>>;
 
 type ClubInfo = { id: number; name: string; color: string };
 
@@ -61,7 +62,17 @@ function whereWindow(win: Window, extra?: string): { clause: string; winArgs: In
   return { clause: conds.length ? `WHERE ${conds.join(' AND ')}` : '', winArgs };
 }
 
-export async function getDashboard() {
+// Wynik dashboardu cache'ujemy w Data Cache Next.js na REVALIDATE_SECONDS.
+// To zwykły obiekt JSON, więc cache jest współdzielony między SSR strony
+// (app/page.tsx) a /api/stats — kolejne wejścia i auto-odświeżenia w tym oknie
+// nie odpalają ani jednego zapytania do bazy, tylko dostają gotowy wynik.
+const REVALIDATE_SECONDS = 60;
+
+export const getDashboard = unstable_cache(computeDashboard, ['dashboard'], {
+  revalidate: REVALIDATE_SECONDS,
+});
+
+async function computeDashboard() {
   await ensureSchema();
   // syncClubs() celowo NIE jest tu wołane — to zapisy (INSERT/DELETE), które nie
   // mają nic do roboty na ścieżce odczytu. Kluby synchronizuje polling (lib/poll.ts),
@@ -69,12 +80,26 @@ export async function getDashboard() {
   // usuwa 5 zbędnych round-tripów do bazy z każdego ładowania dashboardu.
 
   const win = computeWindow();
-  const clubs = await loadClubs();
-  const weeks = await challengeWeeks(win);
 
-  const weekly = await weeklyResults(win, weeks, clubs);
+  // Faza 1: zapytania zależne tylko od okna czasowego — równolegle.
+  const [clubs, weeks, sport_breakdown, last_poll] = await Promise.all([
+    loadClubs(),
+    challengeWeeks(win),
+    sportBreakdown(win),
+    lastPoll(),
+  ]);
+
+  // Faza 2: zapytania zależne od listy klubów / tygodni — równolegle.
+  const [weekly, totals, current_week, top_athletes] = await Promise.all([
+    weeklyResults(win, weeks, clubs),
+    loadTotals(win, clubs),
+    currentWeek(win, clubs),
+    topAthletes(win, clubs),
+  ]);
+
+  // Faza 3: czyste obliczenia + highlights (zależne od weekly i totals).
   const standings = buildStandings(weekly, clubs);
-  const totals = await loadTotals(win, clubs);
+  const highlightsData = await highlights(win, weekly, totals);
 
   const daysToStart =
     win.phase === 'before'
@@ -88,13 +113,13 @@ export async function getDashboard() {
     generated_at: new Date().toISOString(),
     clubs,
     standings,
-    current_week: await currentWeek(win, clubs),
+    current_week,
     weekly,
     totals,
-    top_athletes: await topAthletes(win, clubs),
-    sport_breakdown: await sportBreakdown(win),
-    highlights: await highlights(win, weekly, totals),
-    last_poll: await lastPoll(),
+    top_athletes,
+    sport_breakdown,
+    highlights: highlightsData,
+    last_poll,
   };
 }
 
@@ -287,33 +312,43 @@ async function loadTotals(win: Window, clubs: ClubInfo[]) {
 }
 
 async function topAthletes(win: Window, clubs: ClubInfo[], limit = 5) {
-  const out = [];
-  for (const club of clubs) {
-    const { clause, winArgs } = whereWindow(win, 'club_id = ?');
-    const r = await db().execute({
-      sql: `SELECT athlete_name,
+  // Jedno zapytanie zamiast pętli N zapytań (po jednym na klub): ranking
+  // zawodników w obrębie klubu liczymy oknem ROW_NUMBER() i tniemy do `limit`.
+  const { clause, winArgs } = whereWindow(win);
+  const r = await db().execute({
+    sql: `SELECT club_id, athlete_name, moving_time, distance, activities
+          FROM (
+            SELECT club_id, athlete_name,
                    SUM(moving_time) AS moving_time,
                    SUM(distance)    AS distance,
-                   COUNT(*)         AS activities
+                   COUNT(*)         AS activities,
+                   ROW_NUMBER() OVER (PARTITION BY club_id ORDER BY SUM(moving_time) DESC) AS rn
             FROM activities ${clause}
-            GROUP BY athlete_name
-            ORDER BY moving_time DESC
-            LIMIT ?`,
-      args: [club.id, ...winArgs, limit],
-    });
-    out.push({
-      club_id: club.id,
-      name: club.name,
-      color: club.color,
-      athletes: r.rows.map((row) => ({
-        name: s(row.athlete_name),
-        moving_time: n(row.moving_time),
-        distance: n(row.distance),
-        activities: n(row.activities),
-      })),
+            GROUP BY club_id, athlete_name
+          ) t
+          WHERE rn <= ?
+          ORDER BY club_id, rn`,
+    args: [...winArgs, limit],
+  });
+
+  const byClub = new Map<number, { name: string; moving_time: number; distance: number; activities: number }[]>();
+  for (const row of r.rows) {
+    const cid = n(row.club_id);
+    if (!byClub.has(cid)) byClub.set(cid, []);
+    byClub.get(cid)!.push({
+      name: s(row.athlete_name),
+      moving_time: n(row.moving_time),
+      distance: n(row.distance),
+      activities: n(row.activities),
     });
   }
-  return out;
+
+  return clubs.map((club) => ({
+    club_id: club.id,
+    name: club.name,
+    color: club.color,
+    athletes: byClub.get(club.id) ?? [],
+  }));
 }
 
 async function sportBreakdown(win: Window) {
@@ -358,13 +393,26 @@ async function highlights(
   };
 
   const longestQ = whereWindow(win);
-  const longest = await c.execute({
-    sql: `SELECT a.*, cl.name AS club_name FROM activities a
-          JOIN clubs cl ON cl.id = a.club_id
-          ${longestQ.clause}
-          ORDER BY a.moving_time DESC LIMIT 1`,
-    args: longestQ.winArgs,
-  });
+  const athleteQ = whereWindow(win);
+  // Oba zapytania są niezależne — odpalamy je równolegle.
+  const [longest, athlete] = await Promise.all([
+    c.execute({
+      sql: `SELECT a.*, cl.name AS club_name FROM activities a
+            JOIN clubs cl ON cl.id = a.club_id
+            ${longestQ.clause}
+            ORDER BY a.moving_time DESC LIMIT 1`,
+      args: longestQ.winArgs,
+    }),
+    c.execute({
+      sql: `SELECT a.athlete_name, cl.name AS club_name,
+                   SUM(a.moving_time) AS moving_time, COUNT(*) AS activities
+            FROM activities a JOIN clubs cl ON cl.id = a.club_id
+            ${athleteQ.clause}
+            GROUP BY a.athlete_name, a.club_id, cl.name
+            ORDER BY moving_time DESC LIMIT 1`,
+      args: athleteQ.winArgs,
+    }),
+  ]);
   if (longest.rows[0]) {
     const row = longest.rows[0];
     h.longest_activity = {
@@ -377,16 +425,6 @@ async function highlights(
     };
   }
 
-  const athleteQ = whereWindow(win);
-  const athlete = await c.execute({
-    sql: `SELECT a.athlete_name, cl.name AS club_name,
-                 SUM(a.moving_time) AS moving_time, COUNT(*) AS activities
-          FROM activities a JOIN clubs cl ON cl.id = a.club_id
-          ${athleteQ.clause}
-          GROUP BY a.athlete_name, a.club_id, cl.name
-          ORDER BY moving_time DESC LIMIT 1`,
-    args: athleteQ.winArgs,
-  });
   if (athlete.rows[0]) {
     const row = athlete.rows[0];
     h.top_athlete = {
