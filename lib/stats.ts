@@ -1,7 +1,7 @@
 import { DateTime } from 'luxon';
 import type { InValue } from './db';
-import { db, ensureSchema, syncClubs } from './db';
-import { clubs as clubsConfig, challenge, timezone } from './config';
+import { db, ensureSchema } from './db';
+import { challenge, timezone } from './config';
 import { weekKeyFor, weekLabel, weeksBetween } from './week';
 
 // Port logiki Stats.php. Wszystkie statystyki filtrowane oknem czasowym
@@ -63,7 +63,10 @@ function whereWindow(win: Window, extra?: string): { clause: string; winArgs: In
 
 export async function getDashboard() {
   await ensureSchema();
-  await syncClubs(clubsConfig);
+  // syncClubs() celowo NIE jest tu wołane — to zapisy (INSERT/DELETE), które nie
+  // mają nic do roboty na ścieżce odczytu. Kluby synchronizuje polling (lib/poll.ts),
+  // wpis ręczny (lib/manual.ts) i seed (app/api/seed). Trzymanie tego poza odczytem
+  // usuwa 5 zbędnych round-tripów do bazy z każdego ładowania dashboardu.
 
   const win = computeWindow();
   const clubs = await loadClubs();
