@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { DashboardData } from '@/lib/stats';
+import { sportPl } from '@/lib/sport-names';
 
 // --- formatery (deterministyczne, by uniknąć rozjazdu SSR/CSR) ---
 const PL_MONTHS = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
@@ -265,7 +266,7 @@ function Highlights({ data }: { data: DashboardData }) {
     items.push({
       ico: '⏱️',
       title: `Najdłuższa aktywność: ${dur(h.longest_activity.moving_time)}`,
-      sub: `${h.longest_activity.athlete} (${h.longest_activity.club}) • ${h.longest_activity.sport || ''}`,
+      sub: `${h.longest_activity.athlete} (${h.longest_activity.club}) • ${sportPl(h.longest_activity.sport)}`,
     });
   }
   if (h.biggest_margin) {
@@ -405,7 +406,7 @@ function Sports({ data }: { data: DashboardData }) {
       ) : (
         sports.slice(0, 10).map((s) => (
           <div key={s.sport} className="sport-row">
-            <span className="sname">{s.sport}</span>
+            <span className="sname">{sportPl(s.sport)}</span>
             <span className="strack">
               {/* Pasek wypełniony proporcjonalnie do największej dyscypliny; w środku
                   segmenty w kolorach drużyn wg ich udziału w tej dyscyplinie. */}

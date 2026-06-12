@@ -1,6 +1,7 @@
 import { clubs, challenge, cronSecret, isProd } from '@/lib/config';
 import { safeEqual } from '@/lib/safe-equal';
 import { weeksBetween, weekLabel, weekKeyFor } from '@/lib/week';
+import { sportPl } from '@/lib/sport-names';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,7 +92,7 @@ export default async function ManualPage({
           <select name="sport" defaultValue="Run">
             {SPORTS.map((s) => (
               <option key={s} value={s}>
-                {s}
+                {sportPl(s)}
               </option>
             ))}
           </select>
