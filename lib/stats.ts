@@ -82,11 +82,12 @@ async function computeDashboard() {
   const win = computeWindow();
 
   // Faza 1: zapytania zależne tylko od okna czasowego — równolegle.
-  const [clubs, weeks, sport_breakdown, last_poll] = await Promise.all([
+  const [clubs, weeks, sport_breakdown, last_poll, all_athletes] = await Promise.all([
     loadClubs(),
     challengeWeeks(win),
     sportBreakdown(win),
     lastPoll(),
+    allAthletes(win),
   ]);
 
   // Faza 2: zapytania zależne od listy klubów / tygodni — równolegle.
@@ -117,6 +118,7 @@ async function computeDashboard() {
     weekly,
     totals,
     top_athletes,
+    all_athletes,
     sport_breakdown,
     highlights: highlightsData,
     last_poll,
@@ -354,6 +356,33 @@ async function topAthletes(win: Window, clubs: ClubInfo[], limit = 5) {
     name: club.name,
     color: club.color,
     athletes: byClub.get(club.id) ?? [],
+  }));
+}
+
+async function allAthletes(win: Window) {
+  // Pełny ranking wszystkich zawodników (ze wszystkich drużyn) wg łącznego
+  // czasu aktywności liczących się w wyzwaniu (counted=TRUE, okno czasowe).
+  const { clause, winArgs } = whereWindow(win);
+  const r = await db().execute({
+    sql: `SELECT athlete_name, club_id,
+                 SUM(moving_time) AS moving_time,
+                 SUM(distance)    AS distance,
+                 SUM(elevation)   AS elevation,
+                 COUNT(*)         AS activities
+          FROM activities ${clause}
+          GROUP BY athlete_name, club_id
+          ORDER BY moving_time DESC, athlete_name ASC`,
+    args: winArgs,
+  });
+
+  return r.rows.map((row, i) => ({
+    rank: i + 1,
+    name: s(row.athlete_name),
+    club_id: n(row.club_id),
+    moving_time: n(row.moving_time),
+    distance: n(row.distance),
+    elevation: n(row.elevation),
+    activities: n(row.activities),
   }));
 }
 

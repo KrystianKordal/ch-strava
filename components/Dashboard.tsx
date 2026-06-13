@@ -165,6 +165,9 @@ function Content({ data }: { data: DashboardData }) {
         <Athletes data={data} />
       </div>
       <div className="section-gap">
+        <AthletesAll data={data} />
+      </div>
+      <div className="section-gap">
         <Sports data={data} />
       </div>
     </>
@@ -390,6 +393,58 @@ function Athletes({ data }: { data: DashboardData }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function AthletesAll({ data }: { data: DashboardData }) {
+  const clubsById = new Map(data.clubs.map((c) => [c.id, c]));
+  const athletes = data.all_athletes ?? [];
+  return (
+    <div className="card">
+      <h2>Ranking wszystkich zawodników — łączny czas</h2>
+      {athletes.length === 0 ? (
+        <p className="muted">Brak danych.</p>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Zawodnik</th>
+                <th>Drużyna</th>
+                <th className="num">Czas</th>
+                <th className="num">Aktywności</th>
+                <th className="num">Dystans</th>
+              </tr>
+            </thead>
+            <tbody>
+              {athletes.map((a) => {
+                const club = clubsById.get(a.club_id);
+                return (
+                  <tr key={`${a.club_id}-${a.name}`}>
+                    <td>{a.rank <= 3 ? MEDALS[a.rank - 1] : a.rank}</td>
+                    <td>{a.name}</td>
+                    <td>
+                      {club ? (
+                        <>
+                          {dot(club.color)}
+                          {club.name}
+                        </>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className="num">{dur(a.moving_time)}</td>
+                    <td className="num">{a.activities}</td>
+                    <td className="num">{fmtDec1(a.distance / 1000)} km</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
