@@ -258,7 +258,9 @@ function LiveWeek({ data }: { data: DashboardData }) {
 }
 
 function HallOfFame({ data }: { data: DashboardData }) {
-  const awards = data.hall_of_fame ?? [];
+  // Najpierw osiągnięcia z przypisanym zdobywcą, na końcu wyszarzone (bez
+  // danych). Sort jest stabilny, więc kolejność w obrębie grup się zachowuje.
+  const awards = [...(data.hall_of_fame ?? [])].sort((a, b) => Number(b.available) - Number(a.available));
   const clubColors = new Map(data.clubs.map((c) => [c.id, c.color]));
   return (
     <div className="card">
