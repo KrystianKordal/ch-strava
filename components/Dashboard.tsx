@@ -153,9 +153,8 @@ function Content({ data }: { data: DashboardData }) {
       <Standings data={data} />
       <Tiles data={data} />
 
-      <div className="grid cols-2 section-gap">
+      <div className="section-gap">
         <LiveWeek data={data} />
-        <Highlights data={data} />
       </div>
 
       <div className="section-gap">
@@ -169,6 +168,9 @@ function Content({ data }: { data: DashboardData }) {
       </div>
       <div className="section-gap">
         <Sports data={data} />
+      </div>
+      <div className="section-gap">
+        <HallOfFame data={data} />
       </div>
     </>
   );
@@ -255,45 +257,36 @@ function LiveWeek({ data }: { data: DashboardData }) {
   );
 }
 
-function Highlights({ data }: { data: DashboardData }) {
-  const h = data.highlights as Record<string, any>;
-  const items: { ico: string; title: string; sub: string }[] = [];
-  if (h.top_athlete) {
-    items.push({
-      ico: '🔥',
-      title: `Najaktywniejszy: ${h.top_athlete.athlete}`,
-      sub: `${h.top_athlete.club} • ${dur(h.top_athlete.moving_time)} w ${h.top_athlete.activities} aktywnościach`,
-    });
-  }
-  if (h.longest_activity) {
-    items.push({
-      ico: '⏱️',
-      title: `Najdłuższa aktywność: ${dur(h.longest_activity.moving_time)}`,
-      sub: `${h.longest_activity.athlete} (${h.longest_activity.club}) • ${sportPl(h.longest_activity.sport)}`,
-    });
-  }
-  if (h.biggest_margin) {
-    items.push({
-      ico: '💥',
-      title: `Największa przewaga tygodnia: ${dur(h.biggest_margin.margin)}`,
-      sub: `w tygodniu ${h.biggest_margin.week}`,
-    });
-  }
+function HallOfFame({ data }: { data: DashboardData }) {
+  // Najpierw osiągnięcia z przypisanym zdobywcą, na końcu wyszarzone (bez
+  // danych). Sort jest stabilny, więc kolejność w obrębie grup się zachowuje.
+  const awards = [...(data.hall_of_fame ?? [])].sort((a, b) => Number(b.available) - Number(a.available));
+  const clubColors = new Map(data.clubs.map((c) => [c.id, c.color]));
   return (
     <div className="card">
-      <h2>Ciekawostki i rekordy</h2>
-      {items.length === 0 ? (
-        <p className="muted">Statystyki pojawią się po zebraniu pierwszych aktywności.</p>
+      <h2>Hala Sław</h2>
+      {awards.length === 0 ? (
+        <p className="muted">Osiągnięcia pojawią się po zebraniu pierwszych aktywności.</p>
       ) : (
-        items.map((it, i) => (
-          <div key={i} className="highlight-item">
-            <div className="ico">{it.ico}</div>
-            <div>
-              <div className="h-title">{it.title}</div>
-              <div className="h-sub">{it.sub}</div>
+        <div className="hof-grid">
+          {awards.map((a) => (
+            <div key={a.key} className={`hof-card${a.available ? '' : ' disabled'}`} tabIndex={0}>
+              <span className="hof-ico">{a.icon}</span>
+              <div className="hof-body">
+                <div className="hof-title">{a.title}</div>
+                <div className="hof-sub">{a.subtitle}</div>
+                <div className="hof-winner">
+                  {a.available && a.club_id != null && dot(clubColors.get(a.club_id) ?? 'var(--muted)')}
+                  <span className="hof-name">{a.winner ?? '—'}</span>
+                </div>
+                <div className="hof-metric">{a.metric ?? 'Za mało danych, by wyłonić zdobywcę'}</div>
+              </div>
+              <span className="hof-tip" role="tooltip">
+                {a.tip}
+              </span>
             </div>
-          </div>
-        ))
+          ))}
+        </div>
       )}
     </div>
   );

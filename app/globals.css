@@ -181,11 +181,73 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .sport-row .sseg { height: 100%; }
 .sport-row .sval { width: 64px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 
-.highlight-item { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
-.highlight-item:last-child { border-bottom: 0; }
-.highlight-item .ico { font-size: 22px; }
-.highlight-item .h-title { font-weight: 600; font-size: 14px; color: var(--heading); }
-.highlight-item .h-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+/* ---------- Hala Sław ---------- */
+.hof-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 12px;
+}
+.hof-card {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    transition: transform .12s, box-shadow .12s;
+    cursor: default;
+}
+.hof-card:hover, .hof-card:focus-visible {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+    outline: none;
+}
+.hof-card.disabled { opacity: .45; }
+.hof-ico { font-size: 26px; line-height: 1; flex-shrink: 0; }
+.hof-body { min-width: 0; flex: 1; }
+.hof-title { font-weight: 700; font-size: 14px; color: var(--heading); }
+.hof-sub { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin-top: 1px; }
+.hof-winner { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.hof-name { font-weight: 600; font-size: 14px; color: var(--text); }
+.hof-card.disabled .hof-name { color: var(--muted); }
+.hof-metric { color: var(--accent); font-size: 12px; font-weight: 600; margin-top: 3px; }
+.hof-card.disabled .hof-metric { color: var(--muted); font-weight: 400; font-style: italic; }
+
+/* Tooltip — własny, „ładny" (nie natywny title). */
+.hof-tip {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 14px;
+    right: 14px;
+    z-index: 10;
+    background: var(--heading);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1.45;
+    padding: 9px 11px;
+    border-radius: 9px;
+    box-shadow: var(--shadow);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(4px);
+    transition: opacity .14s, transform .14s, visibility .14s;
+    pointer-events: none;
+}
+.hof-tip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 20px;
+    border: 6px solid transparent;
+    border-top-color: var(--heading);
+}
+.hof-card:hover .hof-tip, .hof-card:focus-visible .hof-tip {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
 
 .loading, .error { padding: 60px 20px; text-align: center; color: var(--muted); }
 .error { color: #c0392b; }
