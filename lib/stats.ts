@@ -100,7 +100,8 @@ async function computeDashboard() {
 
   // Faza 3: czyste obliczenia + highlights (zależne od weekly i totals).
   const standings = buildStandings(weekly, clubs);
-  const highlightsData = await highlights(win, weekly, totals);
+  const highlightsData = highlights(totals);
+  const hall_of_fame = await buildHallOfFame(win, weekly, clubs);
 
   const daysToStart =
     win.phase === 'before'
@@ -121,6 +122,7 @@ async function computeDashboard() {
     all_athletes,
     sport_breakdown,
     highlights: highlightsData,
+    hall_of_fame,
     last_poll,
   };
 }
@@ -429,81 +431,387 @@ async function sportBreakdown(win: Window) {
 }
 
 type Highlights = {
-  longest_activity?: { athlete: string; club: string; name: string; moving_time: number; distance: number; sport: string };
-  top_athlete?: { athlete: string; club: string; moving_time: number; activities: number };
-  biggest_margin?: { week: string; margin: number };
   total_hours: number;
   total_activities: number;
   total_distance_km: number;
 };
 
-async function highlights(
-  win: Window,
-  weekly: WeeklyRow[],
-  totals: Awaited<ReturnType<typeof loadTotals>>,
-): Promise<Highlights> {
-  const c = db();
-
+// Sumy zbiorcze dla kafelków na górze dashboardu (<Tiles>). Szczegółowe
+// „ciekawostki" (najaktywniejszy / najdłuższa aktywność / przewaga tygodnia)
+// zostały zastąpione sekcją „Hala Sław" — patrz buildHallOfFame().
+function highlights(totals: Awaited<ReturnType<typeof loadTotals>>): Highlights {
   const totalSeconds = totals.reduce((acc, t) => acc + t.moving_time, 0);
-  const h: Highlights = {
+  return {
     total_hours: Math.round((totalSeconds / 3600) * 10) / 10,
     total_activities: totals.reduce((acc, t) => acc + t.activities, 0),
     total_distance_km: Math.round((totals.reduce((acc, t) => acc + t.distance, 0) / 1000) * 10) / 10,
   };
+}
 
-  const longestQ = whereWindow(win);
-  const athleteQ = whereWindow(win);
-  // Oba zapytania są niezależne — odpalamy je równolegle.
-  const [longest, athlete] = await Promise.all([
-    c.execute({
-      sql: `SELECT a.*, cl.name AS club_name FROM activities a
-            JOIN clubs cl ON cl.id = a.club_id
-            ${longestQ.clause}
-            ORDER BY a.moving_time DESC LIMIT 1`,
-      args: longestQ.winArgs,
-    }),
-    c.execute({
-      sql: `SELECT a.athlete_name, cl.name AS club_name,
-                   SUM(a.moving_time) AS moving_time, COUNT(*) AS activities
-            FROM activities a JOIN clubs cl ON cl.id = a.club_id
-            ${athleteQ.clause}
-            GROUP BY a.athlete_name, a.club_id, cl.name
-            ORDER BY moving_time DESC LIMIT 1`,
-      args: athleteQ.winArgs,
-    }),
-  ]);
-  if (longest.rows[0]) {
-    const row = longest.rows[0];
-    h.longest_activity = {
-      athlete: s(row.athlete_name),
-      club: s(row.club_name),
-      name: s(row.activity_name),
-      moving_time: n(row.moving_time),
-      distance: n(row.distance),
-      sport: s(row.sport_type) || s(row.type),
-    };
+// ---------- Hala Sław ----------
+// 14 humorystycznych osiągnięć liczonych WZGLĘDNIE (najlepszy kandydat wśród
+// pozostałych), żeby zawsze ktoś się załapał. Osiągnięcia wymagające
+// porównań tydzień-do-tygodnia są wyszarzone (available=false), dopóki nie ma
+// dość danych. Trzy osiągnięcia czasowe (Weekendowy Wojownik, As z Rękawa,
+// Złodzieje Marzeń) liczymy z first_seen (czas wykrycia przez polling) jako
+// przybliżenia — feed Stravy nie zwraca dat aktywności.
+
+export type HallOfFameAward = {
+  key: string;
+  icon: string;
+  title: string;
+  subtitle: string;
+  scope: 'athlete' | 'team';
+  winner: string | null;
+  club_id: number | null;
+  metric: string | null;
+  available: boolean;
+  tip: string;
+};
+
+type AthAgg = { total: number; longest: number; weekend: number; sunday: number };
+
+function hms(sec: number): string {
+  sec = Math.round(sec || 0);
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+function pct(x: number): string {
+  return `${Math.round(x * 100)}%`;
+}
+const sumArr = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+const avgArr = (xs: number[]) => (xs.length ? sumArr(xs) / xs.length : 0);
+const stddevArr = (xs: number[], m: number) => Math.sqrt(avgArr(xs.map((x) => (x - m) ** 2)));
+
+async function buildHallOfFame(
+  win: Window,
+  weekly: WeeklyRow[],
+  clubs: ClubInfo[],
+): Promise<HallOfFameAward[]> {
+  const { clause, winArgs } = whereWindow(win);
+  const r = await db().execute({
+    sql: `SELECT club_id, athlete_name, week_key, moving_time, first_seen FROM activities ${clause}`,
+    args: winArgs,
+  });
+
+  // Agregacja w TS (luxon, strefa wyzwania) — zbiór danych jest mały, a logika
+  // dni tygodnia zostaje spójna z resztą aplikacji.
+  const byAthlete = new Map<string, { club_id: number; athlete: string; weeks: Map<string, AthAgg> }>();
+  const teamWeek = new Map<string, { club_id: number; week: string; total: number; sunday: number; athletes: Map<string, number> }>();
+
+  for (const row of r.rows) {
+    const club_id = n(row.club_id);
+    const athlete = s(row.athlete_name);
+    const week = s(row.week_key);
+    const moving = n(row.moving_time);
+    const fs = s(row.first_seen);
+    const wd = fs ? DateTime.fromISO(fs).setZone(timezone).weekday : 0; // 1=pon … 7=niedz
+    const isWeekend = wd === 6 || wd === 7;
+    const isSunday = wd === 7;
+
+    const aKey = `${club_id}|${athlete}`;
+    let a = byAthlete.get(aKey);
+    if (!a) {
+      a = { club_id, athlete, weeks: new Map() };
+      byAthlete.set(aKey, a);
+    }
+    let aw = a.weeks.get(week);
+    if (!aw) {
+      aw = { total: 0, longest: 0, weekend: 0, sunday: 0 };
+      a.weeks.set(week, aw);
+    }
+    aw.total += moving;
+    aw.longest = Math.max(aw.longest, moving);
+    if (isWeekend) aw.weekend += moving;
+    if (isSunday) aw.sunday += moving;
+
+    const twKey = `${club_id}|${week}`;
+    let tw = teamWeek.get(twKey);
+    if (!tw) {
+      tw = { club_id, week, total: 0, sunday: 0, athletes: new Map() };
+      teamWeek.set(twKey, tw);
+    }
+    tw.total += moving;
+    if (isSunday) tw.sunday += moving;
+    tw.athletes.set(athlete, (tw.athletes.get(athlete) ?? 0) + moving);
   }
 
-  if (athlete.rows[0]) {
-    const row = athlete.rows[0];
-    h.top_athlete = {
-      athlete: s(row.athlete_name),
-      club: s(row.club_name),
-      moving_time: n(row.moving_time),
-      activities: n(row.activities),
-    };
+  const weeks = weekly.map((w) => w.week_key);
+  const numClubs = clubs.length;
+  const hasTwoWeeks = weeks.length >= 2;
+  const hasEnded = weekly.some((w) => w.ended);
+  const clubName = (id: number) => clubs.find((c) => c.id === id)?.name ?? '—';
+  const seriesOf = (a: { weeks: Map<string, AthAgg> }) => weeks.map((w) => a.weeks.get(w)?.total ?? 0);
+  // Pozycja drużyny w tygodniu: 1 + liczba drużyn z czasem ściśle większym (remisy dzielą miejsce).
+  const rankIn = (week: WeeklyRow, club_id: number) => {
+    const t = week.clubs.find((c) => c.club_id === club_id)?.moving_time ?? 0;
+    return 1 + week.clubs.filter((c) => c.moving_time > t).length;
+  };
+
+  type Win = { winner: string; club_id: number; metric: string } | null;
+  const make = (
+    base: { key: string; icon: string; title: string; subtitle: string; scope: 'athlete' | 'team'; tip: string },
+    w: Win,
+  ): HallOfFameAward => ({
+    ...base,
+    available: !!w,
+    winner: w?.winner ?? null,
+    club_id: w?.club_id ?? null,
+    metric: w?.metric ?? null,
+  });
+
+  // 1. Efekt Feniksa — największy wzrost godzin tydzień-do-tygodnia.
+  let feniks: { delta: number; athlete: string; club_id: number; prev: number; curr: number } | null = null;
+  for (const a of byAthlete.values()) {
+    const sx = seriesOf(a);
+    for (let i = 1; i < sx.length; i++) {
+      const delta = sx[i] - sx[i - 1];
+      if (delta > 0 && (!feniks || delta > feniks.delta))
+        feniks = { delta, athlete: a.athlete, club_id: a.club_id, prev: sx[i - 1], curr: sx[i] };
+    }
   }
 
-  let biggestMargin: { week: string; margin: number } | null = null;
+  // 2. Niezłomny — najniższy współczynnik zmienności serii tygodniowej.
+  let niezlomny: { cv: number; athlete: string; club_id: number; mean: number } | null = null;
+  for (const a of byAthlete.values()) {
+    const active = weeks.filter((w) => (a.weeks.get(w)?.total ?? 0) > 0);
+    if (active.length < 2) continue;
+    const lo = weeks.indexOf(active[0]);
+    const hi = weeks.indexOf(active[active.length - 1]);
+    const span = weeks.slice(lo, hi + 1).map((w) => a.weeks.get(w)?.total ?? 0);
+    const mean = avgArr(span);
+    if (mean <= 0) continue;
+    const cv = stddevArr(span, mean) / mean;
+    if (!niezlomny || cv < niezlomny.cv) niezlomny = { cv, athlete: a.athlete, club_id: a.club_id, mean };
+  }
+
+  // 3. Weekendowy Wojownik — najwyższy udział godzin z weekendów (first_seen).
+  let weekend: { share: number; athlete: string; club_id: number } | null = null;
+  for (const a of byAthlete.values()) {
+    let total = 0;
+    let we = 0;
+    for (const w of a.weeks.values()) {
+      total += w.total;
+      we += w.weekend;
+    }
+    if (total <= 0 || we <= 0) continue;
+    const share = we / total;
+    if (!weekend || share > weekend.share) weekend = { share, athlete: a.athlete, club_id: a.club_id };
+  }
+
+  // 4. Król Posiadów — jeden długi trening dominujący tydzień.
+  let krol: { score: number; athlete: string; club_id: number; longest: number; share: number } | null = null;
+  for (const a of byAthlete.values()) {
+    for (const w of a.weeks.values()) {
+      if (w.total <= 0) continue;
+      const share = w.longest / w.total;
+      const score = w.longest * share;
+      if (!krol || score > krol.score)
+        krol = { score, athlete: a.athlete, club_id: a.club_id, longest: w.longest, share };
+    }
+  }
+
+  // 5. Śpiący Rycerz — druga połowa wyzwania znacznie mocniejsza od pierwszej.
+  const half = Math.floor(weeks.length / 2);
+  let spiacy: { score: number; athlete: string; club_id: number; fh: number; sh: number } | null = null;
+  for (const a of byAthlete.values()) {
+    let fh = 0;
+    let sh = 0;
+    weeks.forEach((w, i) => {
+      const t = a.weeks.get(w)?.total ?? 0;
+      if (i < half) fh += t;
+      else sh += t;
+    });
+    const score = sh - fh;
+    if (score > 0 && (!spiacy || score > spiacy.score))
+      spiacy = { score, athlete: a.athlete, club_id: a.club_id, fh, sh };
+  }
+
+  // 6. As z Rękawa — większość wyniku tygodnia wrzucona w niedzielę (first_seen).
+  let as: { score: number; athlete: string; club_id: number; share: number } | null = null;
+  for (const a of byAthlete.values()) {
+    for (const w of a.weeks.values()) {
+      if (w.total <= 0 || w.sunday <= 0) continue;
+      const share = w.sunday / w.total;
+      const score = w.sunday * share;
+      if (!as || score > as.score) as = { score, athlete: a.athlete, club_id: a.club_id, share };
+    }
+  }
+
+  // 7. Efekt Supernowej — jeden tydzień wielokrotnie powyżej własnej średniej.
+  let supernowa: { ratio: number; athlete: string; club_id: number; maxV: number; base: number } | null = null;
+  for (const a of byAthlete.values()) {
+    const sx = seriesOf(a);
+    let maxV = -1;
+    let maxI = -1;
+    sx.forEach((v, i) => {
+      if (v > maxV) {
+        maxV = v;
+        maxI = i;
+      }
+    });
+    if (maxV <= 0) continue;
+    const others = sx.filter((_, i) => i !== maxI);
+    const base = avgArr(others);
+    if (base <= 0) continue; // musi mieć wcześniejszą (niską) bazę — inaczej to „Śpiący Rycerz"
+    const ratio = maxV / base;
+    if (!supernowa || ratio > supernowa.ratio)
+      supernowa = { ratio, athlete: a.athlete, club_id: a.club_id, maxV, base };
+  }
+
+  // 8. Monolit — najbardziej wyrównana drużyna w tygodniu (≥2 aktywnych).
+  let monolit: { spread: number; club_id: number; gap: number } | null = null;
+  for (const tw of teamWeek.values()) {
+    const totals = [...tw.athletes.values()].filter((v) => v > 0);
+    if (totals.length < 2) continue;
+    const mx = Math.max(...totals);
+    const mn = Math.min(...totals);
+    const mean = avgArr(totals);
+    if (mean <= 0) continue;
+    const spread = (mx - mn) / mean;
+    if (!monolit || spread < monolit.spread) monolit = { spread, club_id: tw.club_id, gap: mx - mn };
+  }
+
+  // 9. Zasada Pareto — jeden zawodnik robi największą część wyniku drużyny.
+  let pareto: { share: number; club_id: number; who: string } | null = null;
+  for (const tw of teamWeek.values()) {
+    const entries = [...tw.athletes.entries()].filter(([, v]) => v > 0);
+    if (entries.length < 2 || tw.total <= 0) continue;
+    const top = entries.reduce((m, e) => (e[1] > m[1] ? e : m));
+    const share = top[1] / tw.total;
+    if (!pareto || share > pareto.share) pareto = { share, club_id: tw.club_id, who: top[0] };
+  }
+
+  // 10. Czarny Koń — największy awans w tabeli tydzień-do-tygodnia.
+  let czarnyKon: { gain: number; club_id: number; from: number; to: number } | null = null;
+  for (let i = 1; i < weekly.length; i++) {
+    for (const club of clubs) {
+      const cur = weekly[i].clubs.find((c) => c.club_id === club.id)?.moving_time ?? 0;
+      if (cur <= 0) continue;
+      const from = rankIn(weekly[i - 1], club.id);
+      const to = rankIn(weekly[i], club.id);
+      const gain = from - to;
+      if (gain > 0 && (!czarnyKon || gain > czarnyKon.gain))
+        czarnyKon = { gain, club_id: club.id, from, to };
+    }
+  }
+
+  // 11. Złodzieje Marzeń — lider odwrócony aktywnościami z niedzieli (first_seen).
+  let zlodzieje: { swing: number; club_id: number; label: string } | null = null;
   for (const w of weekly) {
-    const times = w.clubs.map((cl) => cl.moving_time).sort((a, b) => b - a);
-    if (times.length < 2 || times[0] === 0) continue;
-    const margin = times[0] - times[1];
-    if (!biggestMargin || margin > biggestMargin.margin) biggestMargin = { week: w.label, margin };
+    if (!w.ended) continue;
+    const stats = clubs.map((c) => {
+      const t = teamWeek.get(`${c.id}|${w.week_key}`);
+      const total = t?.total ?? 0;
+      return { club_id: c.id, total, pre: total - (t?.sunday ?? 0) };
+    });
+    const final = stats.reduce((m, x) => (x.total > m.total ? x : m));
+    const prov = stats.reduce((m, x) => (x.pre > m.pre ? x : m));
+    if (final.total > 0 && final.club_id !== prov.club_id) {
+      const swing = final.total - final.pre; // wkład z niedzieli, który odwrócił losy
+      if (!zlodzieje || swing > zlodzieje.swing) zlodzieje = { swing, club_id: final.club_id, label: w.label };
+    }
   }
-  if (biggestMargin) h.biggest_margin = biggestMargin;
 
-  return h;
+  // 12. Rzutem na Taśmę — najmniejsza przewaga zwycięzcy w zakończonym tygodniu.
+  let tasma: { margin: number; club_id: number; label: string } | null = null;
+  for (const w of weekly) {
+    if (!w.ended || w.tie || w.winners.length !== 1) continue;
+    const times = w.clubs.map((c) => c.moving_time).sort((a, b) => b - a);
+    if (times.length < 2 || times[0] <= 0) continue;
+    const margin = times[0] - times[1];
+    if (!tasma || margin < tasma.margin) tasma = { margin, club_id: w.winners[0], label: w.label };
+  }
+
+  // 13. Wiecznie Drudzy — najwięcej drugich miejsc w zakończonych tygodniach.
+  const seconds = new Map<number, number>();
+  for (const w of weekly) {
+    if (!w.ended) continue;
+    const sorted = [...w.clubs].filter((c) => c.moving_time > 0).sort((a, b) => b.moving_time - a.moving_time);
+    if (sorted.length < 2 || sorted[0].moving_time === sorted[1].moving_time) continue;
+    seconds.set(sorted[1].club_id, (seconds.get(sorted[1].club_id) ?? 0) + 1);
+  }
+  let drudzy: { count: number; club_id: number } | null = null;
+  for (const [club_id, count] of seconds) if (!drudzy || count > drudzy.count) drudzy = { count, club_id };
+
+  // 14. Efekt Jojo — zwycięzca tygodnia, który tydzień później spada na dno.
+  let jojo: { drop: number; club_id: number; from: string; to: string } | null = null;
+  for (let i = 1; i < weekly.length; i++) {
+    const prev = weekly[i - 1];
+    const cur = weekly[i];
+    if (!prev.ended || prev.tie || prev.winners.length !== 1) continue;
+    const champ = prev.winners[0];
+    const curTimes = cur.clubs.map((c) => c.moving_time);
+    const minT = Math.min(...curTimes);
+    const maxT = Math.max(...curTimes);
+    if (minT === maxT) continue;
+    const champCur = cur.clubs.find((c) => c.club_id === champ);
+    if (champCur && champCur.moving_time === minT) {
+      const prevTime = prev.clubs.find((c) => c.club_id === champ)?.moving_time ?? 0;
+      const drop = prevTime - champCur.moving_time;
+      if (!jojo || drop > jojo.drop) jojo = { drop, club_id: champ, from: prev.label, to: cur.label };
+    }
+  }
+
+  return [
+    make(
+      { key: 'feniks', icon: '🔥', title: 'Efekt Feniksa', subtitle: 'Najlepszy Powrót', scope: 'athlete', tip: 'Największy wzrost liczby godzin tydzień do tygodnia.' },
+      hasTwoWeeks && feniks ? { winner: feniks.athlete, club_id: feniks.club_id, metric: `z ${hms(feniks.prev)} do ${hms(feniks.curr)}` } : null,
+    ),
+    make(
+      { key: 'niezlomny', icon: '🎯', title: 'Niezłomny', subtitle: 'Szwajcarski Zegarek', scope: 'athlete', tip: 'Najbardziej regularny — co tydzień niemal tyle samo godzin.' },
+      hasTwoWeeks && niezlomny ? { winner: niezlomny.athlete, club_id: niezlomny.club_id, metric: `~${hms(niezlomny.mean)}/tydz., wahania ±${pct(niezlomny.cv)}` } : null,
+    ),
+    make(
+      { key: 'weekend', icon: '🎒', title: 'Weekendowy Wojownik', subtitle: 'Pan Soboty', scope: 'athlete', tip: 'Procentowo najwięcej godzin wykręca w weekendy (sob–niedz). Liczone z czasu wykrycia aktywności.' },
+      weekend ? { winner: weekend.athlete, club_id: weekend.club_id, metric: `${pct(weekend.share)} godzin w weekend` } : null,
+    ),
+    make(
+      { key: 'krol', icon: '👑', title: 'Król Posiadów', subtitle: 'Maraton w jeden dzień', scope: 'athlete', tip: 'Jeden bardzo długi trening, który zdominował cały jego tydzień.' },
+      krol ? { winner: krol.athlete, club_id: krol.club_id, metric: `${hms(krol.longest)} w jednym treningu (${pct(krol.share)} tygodnia)` } : null,
+    ),
+    make(
+      { key: 'spiacy', icon: '😴', title: 'Śpiący Rycerz', subtitle: 'Późny Zryw', scope: 'athlete', tip: 'Niewidoczny na początku, w drugiej połowie wyzwania stał się filarem.' },
+      hasTwoWeeks && spiacy ? { winner: spiacy.athlete, club_id: spiacy.club_id, metric: `${hms(spiacy.fh)} → ${hms(spiacy.sh)} (2. połowa)` } : null,
+    ),
+    make(
+      { key: 'as', icon: '🃏', title: 'As z Rękawa', subtitle: 'Niedzielny Snajper', scope: 'athlete', tip: 'Przez tydzień cisza, a w niedzielę potężny wynik wywracający tabelę. Liczone z czasu wykrycia aktywności.' },
+      as ? { winner: as.athlete, club_id: as.club_id, metric: `${pct(as.share)} wyniku w niedzielę` } : null,
+    ),
+    make(
+      { key: 'supernowa', icon: '💫', title: 'Efekt Supernowej', subtitle: 'Nagły Wystrzał', scope: 'athlete', tip: 'Robił niewiele, a w jednym tygodniu wystrzelił z kosmiczną liczbą godzin.' },
+      hasTwoWeeks && supernowa ? { winner: supernowa.athlete, club_id: supernowa.club_id, metric: `${hms(supernowa.maxV)} vs śr. ${hms(supernowa.base)} (×${supernowa.ratio.toFixed(1)})` } : null,
+    ),
+    make(
+      { key: 'monolit', icon: '🧱', title: 'Monolit', subtitle: 'Gra Zespołowa', scope: 'team', tip: 'Najbardziej zespołowa drużyna — najmniejsza różnica między najlepszym a najsłabszym zawodnikiem w tygodniu.' },
+      monolit ? { winner: clubName(monolit.club_id), club_id: monolit.club_id, metric: `różnica tylko ${hms(monolit.gap)} najlepszy–najsłabszy` } : null,
+    ),
+    make(
+      { key: 'pareto', icon: '⚖️', title: 'Zasada Pareto', subtitle: 'Jeden za Wszystkich', scope: 'team', tip: 'Drużyna, w której jeden zawodnik zrobił największą część wyniku zespołu.' },
+      pareto ? { winner: clubName(pareto.club_id), club_id: pareto.club_id, metric: `${pareto.who}: ${pct(pareto.share)} wyniku drużyny` } : null,
+    ),
+    make(
+      { key: 'czarny-kon', icon: '🐴', title: 'Czarny Koń', subtitle: 'Niespodziewany Awans', scope: 'team', tip: 'Drużyna z największym awansem w tabeli tydzień do tygodnia.' },
+      hasTwoWeeks && czarnyKon ? { winner: clubName(czarnyKon.club_id), club_id: czarnyKon.club_id, metric: `z ${czarnyKon.from}. na ${czarnyKon.to}. miejsce` } : null,
+    ),
+    make(
+      { key: 'zlodzieje', icon: '🥷', title: 'Złodzieje Marzeń', subtitle: 'Skok po Prowadzenie', scope: 'team', tip: 'Drużyna, która odebrała prowadzenie w samej końcówce tygodnia. Liczone z czasu wykrycia aktywności.' },
+      hasEnded && zlodzieje ? { winner: clubName(zlodzieje.club_id), club_id: zlodzieje.club_id, metric: `odwrócenie w niedzielę (+${hms(zlodzieje.swing)}, ${zlodzieje.label})` } : null,
+    ),
+    make(
+      { key: 'tasma', icon: '🏁', title: 'Rzutem na Taśmę', subtitle: 'O Włos', scope: 'team', tip: 'Drużyna, która wygrała tydzień najmniejszą różnicą czasu.' },
+      hasEnded && tasma ? { winner: clubName(tasma.club_id), club_id: tasma.club_id, metric: `wygrana o ${hms(tasma.margin)} (${tasma.label})` } : null,
+    ),
+    make(
+      { key: 'drudzy', icon: '🥈', title: 'Wiecznie Drudzy', subtitle: 'Zawsze o Krok', scope: 'team', tip: 'Drużyna, która najczęściej kończyła tydzień tuż za zwycięzcą — na 2. miejscu.' },
+      hasEnded && drudzy ? { winner: clubName(drudzy.club_id), club_id: drudzy.club_id, metric: `${drudzy.count}× drugie miejsce` } : null,
+    ),
+    make(
+      { key: 'jojo', icon: '🪀', title: 'Efekt Jojo', subtitle: 'Wzlot i Upadek', scope: 'team', tip: 'Drużyna, która po wygranym tygodniu zaliczyła zjazd na ostatnie miejsce.' },
+      hasTwoWeeks && jojo ? { winner: clubName(jojo.club_id), club_id: jojo.club_id, metric: `1. (${jojo.from}) → ostatnie (${jojo.to})` } : null,
+    ),
+  ];
 }
 
 async function lastPoll(): Promise<string | null> {
