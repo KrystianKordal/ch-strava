@@ -78,6 +78,15 @@ export default async function ManualPage({
         </label>
 
         <label>
+          Pierwsze wykrycie (opcjonalnie)
+          <input name="first_seen" type="datetime-local" />
+          <span className="hint">
+            Konkretna data i godzina aktywności. Puste = początek wybranego tygodnia. Musi mieścić się w
+            wybranym tygodniu (wpływa m.in. na Halę Sław: weekend / niedziela).
+          </span>
+        </label>
+
+        <label>
           Zawodnik
           <input name="athlete" type="text" placeholder="np. Anna" required />
         </label>

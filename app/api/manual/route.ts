@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
         distance: body.distance != null ? Number(body.distance) : undefined,
         elevation: body.elevation != null ? Number(body.elevation) : undefined,
         weekKey: String(body.weekKey),
+        firstSeen: body.firstSeen ? String(body.firstSeen) : undefined,
       });
       return NextResponse.json({ ok: true });
     } catch (e) {
@@ -74,6 +75,7 @@ export async function POST(req: NextRequest) {
       distance: Math.round(num(form.get('distance_km')) * 1000),
       elevation: Math.round(num(form.get('elevation'))),
       weekKey: String(form.get('week')),
+      firstSeen: (form.get('first_seen') as string) || undefined,
     });
     return back({ ok: '1' });
   } catch (e) {

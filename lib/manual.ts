@@ -1,14 +1,18 @@
 import crypto from 'crypto';
+import { DateTime } from 'luxon';
 import { db, ensureSchema, syncClubs } from './db';
-import { clubs, clubById } from './config';
+import { clubs, clubById, timezone } from './config';
 import { weekRange } from './week';
 
 // Ręczne dopisanie aktywności. Feed klubowy Stravy nie zwraca dat, więc
 // backlog z pierwszego polla jest tylko bazą odniesienia (counted=FALSE).
 // Tutaj uzupełniamy ręcznie to, co już się odbyło, ale czego polling nie
 // zdążył złapać (np. aktywności z początku wyzwania). Wpis ma counted=TRUE,
-// losowy fingerprint (nie koliduje z odciskami Stravy) i first_seen ustawione
-// na początek wybranego tygodnia — żeby trafił w okno wyzwania i właściwy tydzień.
+// losowy fingerprint (nie koliduje z odciskami Stravy) i first_seen domyślnie
+// ustawione na początek wybranego tygodnia — żeby trafił w okno wyzwania i
+// właściwy tydzień. Można też podać konkretny first_seen (data i godzina),
+// co pozwala trafić w dokładny dzień — istotne np. dla Hali Sław, gdzie
+// weekend/niedziela liczone są właśnie z first_seen.
 
 export type ManualActivity = {
   clubId: number;
@@ -19,6 +23,7 @@ export type ManualActivity = {
   distance?: number; // metry
   elevation?: number; // metry
   weekKey: string;
+  firstSeen?: string; // opcjonalnie: konkretny moment wykrycia (ISO / datetime-local)
 };
 
 export async function addManualActivity(a: ManualActivity): Promise<void> {
@@ -30,7 +35,21 @@ export async function addManualActivity(a: ManualActivity): Promise<void> {
   await ensureSchema();
   await syncClubs(clubs);
 
-  const [weekStart] = weekRange(a.weekKey);
+  const [weekStart, weekEnd] = weekRange(a.weekKey);
+
+  // first_seen: domyślnie początek tygodnia. Jeśli podano konkretną wartość,
+  // parsujemy ją w strefie wyzwania i sprawdzamy, czy mieści się w wybranym
+  // tygodniu — inaczej dzień tygodnia i klucz tygodnia byłyby niespójne.
+  let firstSeen = weekStart;
+  if (a.firstSeen?.trim()) {
+    const parsed = DateTime.fromISO(a.firstSeen.trim(), { zone: timezone });
+    if (!parsed.isValid) throw new Error('Nieprawidłowa data „pierwszego wykrycia".');
+    if (parsed < weekStart || parsed > weekEnd) {
+      throw new Error('Data „pierwszego wykrycia" musi mieścić się w wybranym tygodniu.');
+    }
+    firstSeen = parsed;
+  }
+
   const sport = a.sportType?.trim() || 'Inne';
   const fp = `manual-${crypto.randomBytes(12).toString('hex')}`;
 
@@ -51,7 +70,7 @@ export async function addManualActivity(a: ManualActivity): Promise<void> {
       Math.trunc(a.movingTime),
       a.elevation ?? 0,
       a.weekKey,
-      weekStart.toISO()!,
+      firstSeen.toISO()!,
     ],
   });
 }
