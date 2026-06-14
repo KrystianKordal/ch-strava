@@ -16,7 +16,7 @@ export type ActivityItemProps = {
   sub: string;
   manual: boolean;
   initialCounted: boolean;
-  filters: { fclub?: string; fweek?: string; fathlete?: string };
+  filters: { fclub?: string; fweek?: string; fathlete?: string; fday?: string };
   weekOptions: { key: string; label: string }[];
   sportOptions: { value: string; label: string }[];
   edit: {
@@ -135,6 +135,7 @@ export default function ActivityItem(props: ActivityItemProps) {
           {filters.fclub ? <input type="hidden" name="fclub" value={filters.fclub} /> : null}
           {filters.fweek ? <input type="hidden" name="fweek" value={filters.fweek} /> : null}
           {filters.fathlete ? <input type="hidden" name="fathlete" value={filters.fathlete} /> : null}
+          {filters.fday ? <input type="hidden" name="fday" value={filters.fday} /> : null}
 
           <label>
             Tydzień

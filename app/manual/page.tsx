@@ -23,6 +23,7 @@ export default async function ManualPage({
     fclub?: string;
     fweek?: string;
     fathlete?: string;
+    fday?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -54,7 +55,8 @@ export default async function ManualPage({
   const fclub = sp.fclub ? Number(sp.fclub) : undefined;
   const fweek = sp.fweek || undefined;
   const fathlete = sp.fathlete || undefined;
-  const activities = await listActivities({ clubId: fclub, weekKey: fweek, athlete: fathlete });
+  const fday = sp.fday || undefined;
+  const activities = await listActivities({ clubId: fclub, weekKey: fweek, athlete: fathlete, day: fday });
   const clubName = (id: number) => clubs.find((c) => c.id === id)?.name ?? `#${id}`;
   const clubColor = (id: number) => clubs.find((c) => c.id === id)?.color ?? '#888';
 
@@ -63,6 +65,7 @@ export default async function ManualPage({
     ...(sp.fclub ? { fclub: sp.fclub } : {}),
     ...(sp.fweek ? { fweek: sp.fweek } : {}),
     ...(sp.fathlete ? { fathlete: sp.fathlete } : {}),
+    ...(sp.fday ? { fday: sp.fday } : {}),
   };
 
   return (
@@ -193,6 +196,10 @@ export default async function ManualPage({
           <label>
             Zawodnik
             <input name="fathlete" type="text" placeholder="szukaj imienia" defaultValue={sp.fathlete ?? ''} />
+          </label>
+          <label>
+            Dzień
+            <input name="fday" type="date" defaultValue={sp.fday ?? ''} />
           </label>
           <button className="btn" type="submit">Filtruj</button>
         </form>

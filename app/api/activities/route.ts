@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   // Po operacji wracamy na /manual, zachowując klucz i aktywne filtry, żeby
   // użytkownik został w tym samym widoku listy.
   const filters: Record<string, string> = {};
-  for (const f of ['fclub', 'fweek', 'fathlete'] as const) {
+  for (const f of ['fclub', 'fweek', 'fathlete', 'fday'] as const) {
     const v = form.get(f);
     if (v) filters[f] = String(v);
   }

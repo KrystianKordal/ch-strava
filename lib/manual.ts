@@ -96,7 +96,8 @@ export type ManagedActivity = {
   manual: boolean;
 };
 
-export type ActivityFilter = { clubId?: number; weekKey?: string; athlete?: string };
+// day: konkretny dzień (YYYY-MM-DD) liczony po first_seen w strefie wyzwania.
+export type ActivityFilter = { clubId?: number; weekKey?: string; athlete?: string; day?: string };
 
 export async function listActivities(filter: ActivityFilter): Promise<ManagedActivity[]> {
   await ensureSchema();
@@ -114,12 +115,22 @@ export async function listActivities(filter: ActivityFilter): Promise<ManagedAct
     conds.push('LOWER(athlete_name) LIKE ?');
     args.push(`%${filter.athlete.trim().toLowerCase()}%`);
   }
+  if (filter.day?.trim()) {
+    // Zakres [00:00, 23:59:59] danego dnia w strefie wyzwania. first_seen trzymamy
+    // jako ISO z offsetem strefy, więc porównanie tekstowe granic (też w tej
+    // strefie) działa — tak jak filtrowanie oknem w lib/stats.ts.
+    const d = DateTime.fromISO(filter.day.trim(), { zone: timezone });
+    if (d.isValid) {
+      conds.push('first_seen >= ? AND first_seen <= ?');
+      args.push(d.startOf('day').toISO()!, d.endOf('day').toISO()!);
+    }
+  }
   const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
   const r = await db().execute({
     sql: `SELECT id, club_id, athlete_name, activity_name, sport_type, type,
                  distance, moving_time, elevation, week_key, first_seen, counted, fingerprint
           FROM activities ${where}
-          ORDER BY club_id, athlete_name, first_seen`,
+          ORDER BY first_seen DESC, id DESC`,
     args,
   });
   return r.rows.map((row) => ({
