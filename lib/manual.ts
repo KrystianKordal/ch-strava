@@ -74,3 +74,136 @@ export async function addManualActivity(a: ManualActivity): Promise<void> {
     ],
   });
 }
+
+// ----------------------------------------------- Zarządzanie aktywnościami --
+// Panel na /manual: lista aktywności wszystkich uczestników z możliwością
+// edycji, usunięcia i wyłączenia z liczenia (counted=FALSE). Wyłączenie nie
+// kasuje danych — wiersz zostaje, ale wypada ze statystyk (lib/stats.ts).
+
+export type ManagedActivity = {
+  id: number;
+  club_id: number;
+  athlete_name: string;
+  activity_name: string | null;
+  sport_type: string | null;
+  type: string | null;
+  distance: number;
+  moving_time: number;
+  elevation: number;
+  week_key: string;
+  first_seen: string;
+  counted: boolean;
+  manual: boolean;
+};
+
+export type ActivityFilter = { clubId?: number; weekKey?: string; athlete?: string };
+
+export async function listActivities(filter: ActivityFilter): Promise<ManagedActivity[]> {
+  await ensureSchema();
+  const conds: string[] = [];
+  const args: (string | number)[] = [];
+  if (filter.clubId) {
+    conds.push('club_id = ?');
+    args.push(filter.clubId);
+  }
+  if (filter.weekKey) {
+    conds.push('week_key = ?');
+    args.push(filter.weekKey);
+  }
+  if (filter.athlete?.trim()) {
+    conds.push('LOWER(athlete_name) LIKE ?');
+    args.push(`%${filter.athlete.trim().toLowerCase()}%`);
+  }
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+  const r = await db().execute({
+    sql: `SELECT id, club_id, athlete_name, activity_name, sport_type, type,
+                 distance, moving_time, elevation, week_key, first_seen, counted, fingerprint
+          FROM activities ${where}
+          ORDER BY club_id, athlete_name, first_seen`,
+    args,
+  });
+  return r.rows.map((row) => ({
+    id: Number(row.id),
+    club_id: Number(row.club_id),
+    athlete_name: String(row.athlete_name),
+    activity_name: row.activity_name == null ? null : String(row.activity_name),
+    sport_type: row.sport_type == null ? null : String(row.sport_type),
+    type: row.type == null ? null : String(row.type),
+    distance: Number(row.distance),
+    moving_time: Number(row.moving_time),
+    elevation: Number(row.elevation),
+    week_key: String(row.week_key),
+    first_seen: String(row.first_seen),
+    counted: Boolean(row.counted),
+    manual: String(row.fingerprint).startsWith('manual-'),
+  }));
+}
+
+export async function deleteActivity(id: number): Promise<void> {
+  if (!Number.isInteger(id) || id <= 0) throw new Error('Nieprawidłowe ID aktywności.');
+  await ensureSchema();
+  await db().execute({ sql: 'DELETE FROM activities WHERE id = ?', args: [id] });
+}
+
+export async function setActivityCounted(id: number, counted: boolean): Promise<void> {
+  if (!Number.isInteger(id) || id <= 0) throw new Error('Nieprawidłowe ID aktywności.');
+  await ensureSchema();
+  await db().execute({ sql: 'UPDATE activities SET counted = ? WHERE id = ?', args: [counted, id] });
+}
+
+export type ActivityEdit = {
+  athlete: string;
+  name?: string;
+  sportType?: string;
+  movingTime: number; // sekundy
+  distance?: number; // metry
+  elevation?: number; // metry
+  weekKey: string;
+  firstSeen?: string;
+};
+
+export async function updateActivity(id: number, a: ActivityEdit): Promise<void> {
+  if (!Number.isInteger(id) || id <= 0) throw new Error('Nieprawidłowe ID aktywności.');
+  if (!a.athlete.trim()) throw new Error('Podaj imię zawodnika.');
+  if (!(a.movingTime > 0)) throw new Error('Czas aktywności musi być większy od zera.');
+  if (!/^\d{4}-W\d{2}$/.test(a.weekKey)) throw new Error('Nieprawidłowy tydzień.');
+
+  await ensureSchema();
+  const [weekStart, weekEnd] = weekRange(a.weekKey);
+
+  // first_seen: domyślnie początek tygodnia; jeśli podano konkretną wartość,
+  // musi mieścić się w wybranym tygodniu (jak przy dodawaniu ręcznym).
+  let firstSeen = weekStart;
+  if (a.firstSeen?.trim()) {
+    const parsed = DateTime.fromISO(a.firstSeen.trim(), { zone: timezone });
+    if (!parsed.isValid) throw new Error('Nieprawidłowa data „pierwszego wykrycia".');
+    if (parsed < weekStart || parsed > weekEnd) {
+      throw new Error('Data „pierwszego wykrycia" musi mieścić się w wybranym tygodniu.');
+    }
+    firstSeen = parsed;
+  }
+
+  const sport = a.sportType?.trim() || 'Inne';
+
+  // Świadomie NIE ruszamy fingerprintu — zostaje oryginalny, żeby kolejny poll
+  // tej samej aktywności (z niezmienionymi danymi ze Stravy) wciąż się z nią
+  // deduplikował, a nie wstawił jej na nowo po naszej ręcznej korekcie.
+  await db().execute({
+    sql: `UPDATE activities
+             SET athlete_name = ?, activity_name = ?, type = ?, sport_type = ?,
+                 distance = ?, moving_time = ?, elevation = ?, week_key = ?, first_seen = ?
+           WHERE id = ?`,
+    args: [
+      a.athlete.trim(),
+      a.name?.trim() || null,
+      sport,
+      sport,
+      a.distance ?? 0,
+      Math.trunc(a.movingTime),
+      a.elevation ?? 0,
+      a.weekKey,
+      firstSeen.toISO()!,
+      id,
+    ],
+  });
+}

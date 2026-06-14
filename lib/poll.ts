@@ -27,21 +27,54 @@ async function isFirstPoll(clubId: number): Promise<boolean> {
   return Number(r.rows[0]?.n ?? 0) === 0;
 }
 
-function fingerprint(athlete: string, a: StravaActivity): string {
+/**
+ * Odcisk palca aktywności — używany do deduplikacji, bo feed klubowy Stravy
+ * nie zwraca ID ani daty. KLUCZOWE: bierzemy tylko pola, które się NIE zmieniają
+ * po fakcie. Świadomie pomijamy:
+ *   • `name` — Strava nadaje auto-tytuł i lokalizuje go zależnie od ustawień
+ *     widza („Morning Walk" / „Poranny spacer"), a zawodnicy zmieniają tytuły
+ *     ręcznie. Każda taka zmiana = inny odcisk = duplikat całej aktywności.
+ *   • `total_elevation_gain` — Strava przelicza je po fakcie (korekta
+ *     przewyższenia), więc też potrafiło skakać.
+ * Dodatkowo normalizujemy:
+ *   • dystans → pełne metry (feed raz oddaje 4670, raz 4670.4),
+ *   • imię → NFC + lower (różnice w normalizacji Unicode/wielkości liter dawały
+ *     różny odcisk przy wizualnie identycznym imieniu),
+ *   • sport → lower (drobne różnice wielkości liter).
+ * Czas (moving/elapsed) zostaje co do sekundy — to stała tożsamość aktywności,
+ * a przy aktywnościach bez dystansu (trener, siłownia) jedyny rozróżnik.
+ */
+export function activityFingerprint(input: {
+  athlete: string;
+  sport: string;
+  distance: number;
+  movingTime: number;
+  elapsedTime: number;
+}): string {
+  const athlete = input.athlete.normalize('NFC').trim().toLowerCase() || 'nieznany';
+  const sport = (input.sport ?? '').normalize('NFC').trim().toLowerCase();
   return crypto
     .createHash('md5')
     .update(
       [
         athlete,
-        a.name ?? '',
-        a.sport_type ?? a.type ?? '',
-        Math.round(a.distance ?? 0),
-        Math.trunc(a.moving_time ?? 0),
-        Math.trunc(a.elapsed_time ?? 0),
-        Math.round(a.total_elevation_gain ?? 0),
+        sport,
+        Math.round(input.distance ?? 0),
+        Math.trunc(input.movingTime ?? 0),
+        Math.trunc(input.elapsedTime ?? 0),
       ].join('|'),
     )
     .digest('hex');
+}
+
+function fingerprint(athlete: string, a: StravaActivity): string {
+  return activityFingerprint({
+    athlete,
+    sport: a.sport_type ?? a.type ?? '',
+    distance: a.distance ?? 0,
+    movingTime: a.moving_time ?? 0,
+    elapsedTime: a.elapsed_time ?? 0,
+  });
 }
 
 export async function runPoll(): Promise<PollResult> {
