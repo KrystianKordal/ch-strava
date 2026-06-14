@@ -8,8 +8,10 @@ export const dynamic = 'force-dynamic';
 
 // Zarządzanie istniejącymi aktywnościami z panelu na /manual: edycja, usunięcie
 // oraz włączenie/wyłączenie z liczenia (counted). Chronione tym samym sekretem
-// co /api/poll i /api/manual (POLL_SECRET). Obsługuje formularze (redirect 303
-// z powrotem na /manual z zachowanymi filtrami).
+// co /api/poll i /api/manual (POLL_SECRET).
+//   • zwykły formularz → redirect 303 z powrotem na /manual (z filtrami),
+//   • żądanie AJAX (pole ajax=1) → odpowiedź JSON, bez przeładowania strony
+//     (panel aktualizuje wiersz w miejscu — wyłączanie/usuwanie nie gubi pozycji).
 
 function authorized(req: NextRequest, key: string | null): boolean {
   if (!cronSecret) return !isProd;
@@ -33,14 +35,24 @@ export async function POST(req: NextRequest) {
     const v = form.get(f);
     if (v) filters[f] = String(v);
   }
-  const back = (params: Record<string, string>) =>
-    NextResponse.redirect(
+  const ajax = String(form.get('ajax') ?? '') === '1';
+  // Tryb AJAX: zwracamy JSON i nie przeładowujemy strony. Zwykły formularz:
+  // redirect 303 z powrotem na /manual z zachowanym kluczem i filtrami.
+  const done = (params: { ok?: string; error?: string }, status = 200) => {
+    if (ajax) {
+      return NextResponse.json(
+        params.error ? { error: params.error } : { ok: true, message: params.ok ?? '' },
+        { status: params.error ? status : 200 },
+      );
+    }
+    return NextResponse.redirect(
       new URL(`/manual?${new URLSearchParams({ ...(key ? { key } : {}), ...filters, ...params })}`, req.url),
       { status: 303 },
     );
+  };
 
   if (!authorized(req, key)) {
-    return back({ error: 'Brak autoryzacji (zły klucz).' });
+    return done({ error: 'Brak autoryzacji (zły klucz).' }, 401);
   }
 
   const op = String(form.get('op') ?? '');
@@ -49,12 +61,12 @@ export async function POST(req: NextRequest) {
   try {
     if (op === 'delete') {
       await deleteActivity(id);
-      return back({ ok: 'Aktywność usunięta.' });
+      return done({ ok: 'Aktywność usunięta.' });
     }
     if (op === 'toggle') {
       const counted = String(form.get('counted')) === '1';
       await setActivityCounted(id, counted);
-      return back({ ok: counted ? 'Aktywność włączona do liczenia.' : 'Aktywność wyłączona z liczenia.' });
+      return done({ ok: counted ? 'Aktywność włączona do liczenia.' : 'Aktywność wyłączona z liczenia.' });
     }
     if (op === 'update') {
       const hours = num(form.get('hours'));
@@ -69,10 +81,10 @@ export async function POST(req: NextRequest) {
         weekKey: String(form.get('week')),
         firstSeen: (form.get('first_seen') as string) || undefined,
       });
-      return back({ ok: 'Aktywność zaktualizowana.' });
+      return done({ ok: 'Aktywność zaktualizowana.' });
     }
-    return back({ error: 'Nieznana operacja.' });
+    return done({ error: 'Nieznana operacja.' }, 400);
   } catch (e) {
-    return back({ error: (e as Error).message });
+    return done({ error: (e as Error).message }, 400);
   }
 }

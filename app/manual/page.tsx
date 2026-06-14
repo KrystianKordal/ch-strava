@@ -3,7 +3,8 @@ import { clubs, challenge, timezone, cronSecret, isProd } from '@/lib/config';
 import { safeEqual } from '@/lib/safe-equal';
 import { weeksBetween, weekLabel, weekKeyFor } from '@/lib/week';
 import { sportPl } from '@/lib/sport-names';
-import { listActivities, type ManagedActivity } from '@/lib/manual';
+import { listActivities } from '@/lib/manual';
+import ActivityItem from './activity-item';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,14 +79,12 @@ export default async function ManualPage({
   const clubName = (id: number) => clubs.find((c) => c.id === id)?.name ?? `#${id}`;
   const clubColor = (id: number) => clubs.find((c) => c.id === id)?.color ?? '#888';
 
-  // Pola filtrów przekazywane przy każdej operacji, żeby wrócić do tego widoku.
-  const filterHidden = (
-    <>
-      {sp.fclub ? <input type="hidden" name="fclub" value={sp.fclub} /> : null}
-      {sp.fweek ? <input type="hidden" name="fweek" value={sp.fweek} /> : null}
-      {sp.fathlete ? <input type="hidden" name="fathlete" value={sp.fathlete} /> : null}
-    </>
-  );
+  // Filtry przekazywane do edycji (zwykły submit), żeby wrócić do tego widoku.
+  const filters = {
+    ...(sp.fclub ? { fclub: sp.fclub } : {}),
+    ...(sp.fweek ? { fweek: sp.fweek } : {}),
+    ...(sp.fathlete ? { fathlete: sp.fathlete } : {}),
+  };
 
   return (
     <div className="auth-wrap">
@@ -225,18 +224,39 @@ export default async function ManualPage({
           <p className="act-empty">Brak aktywności dla wybranych filtrów.</p>
         ) : (
           <div className="act-list">
-            {activities.map((a) => (
-              <ActivityItem
-                key={a.id}
-                a={a}
-                actAction={actAction}
-                keyVal={key}
-                weeks={weeks}
-                filterHidden={filterHidden}
-                clubName={clubName}
-                clubColor={clubColor}
-              />
-            ))}
+            {activities.map((a) => {
+              const sport = a.sport_type ?? a.type ?? 'Inne';
+              const { h, m } = hm(a.moving_time);
+              const weekKeys = weeks.includes(a.week_key) ? weeks : [a.week_key, ...weeks];
+              const sportKeys = SPORTS.includes(sport) ? SPORTS : [sport, ...SPORTS];
+              return (
+                <ActivityItem
+                  key={a.id}
+                  id={a.id}
+                  actAction={actAction}
+                  keyVal={key}
+                  dotColor={clubColor(a.club_id)}
+                  title={`${a.athlete_name} · ${a.activity_name || sportPl(sport) || 'Aktywność'}`}
+                  sub={`${clubName(a.club_id)} · ${sportPl(sport)} · ${fmtTime(a.moving_time)} · ${fmtKm(a.distance)} · ${a.week_key} · ${fmtSeen(a.first_seen)}`}
+                  manual={a.manual}
+                  initialCounted={a.counted}
+                  filters={filters}
+                  weekOptions={weekKeys.map((wk) => ({ key: wk, label: weekLabel(wk) }))}
+                  sportOptions={sportKeys.map((s) => ({ value: s, label: sportPl(s) }))}
+                  edit={{
+                    week: a.week_key,
+                    firstSeenLocal: toLocalInput(a.first_seen),
+                    athlete: a.athlete_name,
+                    name: a.activity_name ?? '',
+                    sport,
+                    hours: h,
+                    minutes: m,
+                    distanceKm: a.distance > 0 ? (a.distance / 1000).toFixed(2) : '',
+                    elevation: a.elevation > 0 ? String(Math.round(a.elevation)) : '',
+                  }}
+                />
+              );
+            })}
           </div>
         )}
       </section>
@@ -244,161 +264,6 @@ export default async function ManualPage({
       <p className="muted">
         Wróć na <a href="/">dashboard</a>.
       </p>
-
-      {/* Potwierdzenie przy usuwaniu (bez frameworka klienta). */}
-      <script
-        dangerouslySetInnerHTML={{
-          __html:
-            "document.addEventListener('submit',function(e){var f=e.target;if(f&&f.dataset&&f.dataset.confirm&&!confirm(f.dataset.confirm)){e.preventDefault();}},true);",
-        }}
-      />
-    </div>
-  );
-}
-
-function ActivityItem({
-  a,
-  actAction,
-  keyVal,
-  weeks,
-  filterHidden,
-  clubName,
-  clubColor,
-}: {
-  a: ManagedActivity;
-  actAction: string;
-  keyVal: string;
-  weeks: string[];
-  filterHidden: React.ReactNode;
-  clubName: (id: number) => string;
-  clubColor: (id: number) => string;
-}) {
-  const sport = a.sport_type ?? a.type ?? 'Inne';
-  const { h, m } = hm(a.moving_time);
-  const sportOptions = SPORTS.includes(sport) ? SPORTS : [sport, ...SPORTS];
-
-  return (
-    <div className={`act-item${a.counted ? '' : ' off'}`}>
-      <div className="act-head">
-        <span className="act-dot" style={{ background: clubColor(a.club_id) }} aria-hidden />
-        <div className="act-main">
-          <span className="act-title">
-            {a.athlete_name} · {a.activity_name || sportPl(sport) || 'Aktywność'}
-          </span>
-          <span className="act-sub">
-            {clubName(a.club_id)} · {sportPl(sport)} · {fmtTime(a.moving_time)} · {fmtKm(a.distance)} ·{' '}
-            {a.week_key} · {fmtSeen(a.first_seen)}
-          </span>
-        </div>
-        {a.manual && <span className="act-badge man">ręczna</span>}
-        {!a.counted && <span className="act-badge off">wyłączona</span>}
-
-        <div className="act-actions">
-          <form method="post" action={actAction}>
-            <input type="hidden" name="key" value={keyVal} />
-            <input type="hidden" name="op" value="toggle" />
-            <input type="hidden" name="id" value={a.id} />
-            <input type="hidden" name="counted" value={a.counted ? '0' : '1'} />
-            {filterHidden}
-            <button className="btn-sm" type="submit">
-              {a.counted ? 'Wyłącz' : 'Włącz'}
-            </button>
-          </form>
-          <form method="post" action={actAction} data-confirm="Usunąć tę aktywność na stałe?">
-            <input type="hidden" name="key" value={keyVal} />
-            <input type="hidden" name="op" value="delete" />
-            <input type="hidden" name="id" value={a.id} />
-            {filterHidden}
-            <button className="btn-sm danger" type="submit">
-              Usuń
-            </button>
-          </form>
-        </div>
-      </div>
-
-      <details className="act-edit">
-        <summary>Edytuj</summary>
-        <form className="manual-form" method="post" action={actAction}>
-          <input type="hidden" name="key" value={keyVal} />
-          <input type="hidden" name="op" value="update" />
-          <input type="hidden" name="id" value={a.id} />
-          {filterHidden}
-
-          <label>
-            Tydzień
-            <select name="week" defaultValue={a.week_key} required>
-              {(weeks.includes(a.week_key) ? weeks : [a.week_key, ...weeks]).map((wk) => (
-                <option key={wk} value={wk}>
-                  {wk} ({weekLabel(wk)})
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Pierwsze wykrycie (opcjonalnie)
-            <input name="first_seen" type="datetime-local" defaultValue={toLocalInput(a.first_seen)} />
-            <span className="hint">Musi mieścić się w wybranym tygodniu. Puste = początek tygodnia.</span>
-          </label>
-
-          <label>
-            Zawodnik
-            <input name="athlete" type="text" defaultValue={a.athlete_name} required />
-          </label>
-
-          <label>
-            Nazwa aktywności (opcjonalnie)
-            <input name="name" type="text" defaultValue={a.activity_name ?? ''} />
-          </label>
-
-          <label>
-            Sport
-            <select name="sport" defaultValue={sport}>
-              {sportOptions.map((s) => (
-                <option key={s} value={s}>
-                  {sportPl(s)}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="row2">
-            <label>
-              Czas — godziny
-              <input name="hours" type="number" min="0" step="1" defaultValue={h} />
-            </label>
-            <label>
-              Czas — minuty
-              <input name="minutes" type="number" min="0" max="59" step="1" defaultValue={m} />
-            </label>
-          </div>
-
-          <div className="row2">
-            <label>
-              Dystans (km, opcjonalnie)
-              <input
-                name="distance_km"
-                type="number"
-                min="0"
-                step="0.01"
-                defaultValue={a.distance > 0 ? (a.distance / 1000).toFixed(2) : ''}
-              />
-            </label>
-            <label>
-              Przewyższenie (m, opcjonalnie)
-              <input
-                name="elevation"
-                type="number"
-                min="0"
-                step="1"
-                defaultValue={a.elevation > 0 ? Math.round(a.elevation) : ''}
-              />
-            </label>
-          </div>
-
-          <button className="btn" type="submit">Zapisz zmiany</button>
-        </form>
-      </details>
     </div>
   );
 }
