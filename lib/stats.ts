@@ -724,6 +724,16 @@ async function buildHallOfFame(
     if (!tasma || margin < tasma.margin) tasma = { margin, club_id: w.winners[0], label: w.label };
   }
 
+  // 12b. Walec — najbardziej miażdżąca przewaga lidera w tygodniu. „Łagodne":
+  // bierzemy też trwający tydzień, byle był wyraźny lider (max > drugi, >0).
+  let walec: { margin: number; club_id: number; label: string } | null = null;
+  for (const w of weekly) {
+    const sorted = [...w.clubs].sort((a, b) => b.moving_time - a.moving_time);
+    if (sorted.length < 2 || sorted[0].moving_time <= 0 || sorted[0].moving_time === sorted[1].moving_time) continue;
+    const margin = sorted[0].moving_time - sorted[1].moving_time;
+    if (!walec || margin > walec.margin) walec = { margin, club_id: sorted[0].club_id, label: w.label };
+  }
+
   // 13. Wiecznie Drudzy — najwięcej drugich miejsc w zakończonych tygodniach.
   const seconds = new Map<number, number>();
   for (const w of weekly) {
@@ -802,6 +812,10 @@ async function buildHallOfFame(
     make(
       { key: 'tasma', icon: '🏁', title: 'Rzutem na Taśmę', subtitle: 'O Włos', scope: 'team', tip: 'Drużyna, która wygrała tydzień najmniejszą różnicą czasu.' },
       hasEnded && tasma ? { winner: clubName(tasma.club_id), club_id: tasma.club_id, metric: `wygrana o ${hms(tasma.margin)} (${tasma.label})` } : null,
+    ),
+    make(
+      { key: 'walec', icon: '💥', title: 'Walec', subtitle: 'Miażdżąca Przewaga', scope: 'team', tip: 'Tydzień z najbardziej miażdżącą przewagą lidera nad rywalami.' },
+      walec ? { winner: clubName(walec.club_id), club_id: walec.club_id, metric: `przewaga ${hms(walec.margin)} (${walec.label})` } : null,
     ),
     make(
       { key: 'drudzy', icon: '🥈', title: 'Wiecznie Drudzy', subtitle: 'Zawsze o Krok', scope: 'team', tip: 'Drużyna, która najczęściej kończyła tydzień tuż za zwycięzcą — na 2. miejscu.' },
