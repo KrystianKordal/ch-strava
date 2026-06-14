@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { DashboardData } from '@/lib/stats';
+import type { DashboardData, HallOfFameAward } from '@/lib/stats';
 import { sportPl } from '@/lib/sport-names';
 
 // --- formatery (deterministyczne, by uniknąć rozjazdu SSR/CSR) ---
@@ -262,31 +262,39 @@ function HallOfFame({ data }: { data: DashboardData }) {
   // danych). Sort jest stabilny, więc kolejność w obrębie grup się zachowuje.
   const awards = [...(data.hall_of_fame ?? [])].sort((a, b) => Number(b.available) - Number(a.available));
   const clubColors = new Map(data.clubs.map((c) => [c.id, c.color]));
+  const individual = awards.filter((a) => a.scope === 'athlete');
+  const team = awards.filter((a) => a.scope === 'team');
+
+  const renderAward = (a: HallOfFameAward) => (
+    <div key={a.key} className={`hof-card${a.available ? '' : ' disabled'}`} tabIndex={0}>
+      <span className="hof-ico">{a.icon}</span>
+      <div className="hof-body">
+        <div className="hof-title">{a.title}</div>
+        <div className="hof-sub">{a.subtitle}</div>
+        <div className="hof-winner">
+          {a.available && a.club_id != null && dot(clubColors.get(a.club_id) ?? 'var(--muted)')}
+          <span className="hof-name">{a.winner ?? '—'}</span>
+        </div>
+        <div className="hof-metric">{a.metric ?? 'Za mało danych, by wyłonić zdobywcę'}</div>
+      </div>
+      <span className="hof-tip" role="tooltip">
+        {a.tip}
+      </span>
+    </div>
+  );
+
   return (
     <div className="card">
       <h2>Hala Sław</h2>
       {awards.length === 0 ? (
         <p className="muted">Osiągnięcia pojawią się po zebraniu pierwszych aktywności.</p>
       ) : (
-        <div className="hof-grid">
-          {awards.map((a) => (
-            <div key={a.key} className={`hof-card${a.available ? '' : ' disabled'}`} tabIndex={0}>
-              <span className="hof-ico">{a.icon}</span>
-              <div className="hof-body">
-                <div className="hof-title">{a.title}</div>
-                <div className="hof-sub">{a.subtitle}</div>
-                <div className="hof-winner">
-                  {a.available && a.club_id != null && dot(clubColors.get(a.club_id) ?? 'var(--muted)')}
-                  <span className="hof-name">{a.winner ?? '—'}</span>
-                </div>
-                <div className="hof-metric">{a.metric ?? 'Za mało danych, by wyłonić zdobywcę'}</div>
-              </div>
-              <span className="hof-tip" role="tooltip">
-                {a.tip}
-              </span>
-            </div>
-          ))}
-        </div>
+        <>
+          <h3 className="hof-group-title">Osiągnięcia indywidualne</h3>
+          <div className="hof-grid">{individual.map(renderAward)}</div>
+          <h3 className="hof-group-title">Osiągnięcia drużynowe</h3>
+          <div className="hof-grid">{team.map(renderAward)}</div>
+        </>
       )}
     </div>
   );
