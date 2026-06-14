@@ -94,6 +94,21 @@ body {
 }
 .section-gap { margin-top: 18px; }
 
+/* Nagłówek karty z selektorem (np. wybór tygodnia po prawej). */
+.card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.card-head h2 { margin: 0; }
+.week-select { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.week-select .muted { font-weight: 600; }
+.week-select select {
+    font: inherit; font-weight: 500; color: var(--heading);
+    background: var(--bg); border: 1px solid var(--border); border-radius: 9px;
+    padding: 7px 10px; cursor: pointer;
+}
+.week-select select:focus { outline: none; border-color: var(--accent); }
+
 /* ---------- Podium / standings ---------- */
 .podium { display: flex; gap: 14px; align-items: flex-end; }
 .podium-col {

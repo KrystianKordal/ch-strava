@@ -82,21 +82,21 @@ async function computeDashboard() {
   const win = computeWindow();
 
   // Faza 1: zapytania zależne tylko od okna czasowego — równolegle.
-  const [clubs, weeks, sport_breakdown, last_poll, all_athletes] = await Promise.all([
+  const [clubs, weeks, sport_breakdown, last_poll] = await Promise.all([
     loadClubs(),
     challengeWeeks(win),
     sportBreakdown(win),
     lastPoll(),
-    allAthletes(win),
   ]);
 
   // Faza 2: zapytania zależne od listy klubów / tygodni — równolegle.
-  const [weekly, totals, current_week, top_athletes] = await Promise.all([
+  const [weekly, totals, current_week, rankings] = await Promise.all([
     weeklyResults(win, weeks, clubs),
     loadTotals(win, clubs),
     currentWeek(win, clubs),
-    topAthletes(win, clubs),
+    athleteRankings(win, clubs),
   ]);
+  const { top_athletes, all_athletes, top_athletes_by_week, all_athletes_by_week } = rankings;
 
   // Faza 3: czyste obliczenia + highlights (zależne od weekly i totals).
   const standings = buildStandings(weekly, clubs);
@@ -120,6 +120,8 @@ async function computeDashboard() {
     totals,
     top_athletes,
     all_athletes,
+    top_athletes_by_week,
+    all_athletes_by_week,
     sport_breakdown,
     highlights: highlightsData,
     hall_of_fame,
@@ -321,71 +323,109 @@ async function loadTotals(win: Window, clubs: ClubInfo[]) {
   });
 }
 
-async function topAthletes(win: Window, clubs: ClubInfo[], limit = 5) {
-  // Jedno zapytanie zamiast pętli N zapytań (po jednym na klub): ranking
-  // zawodników w obrębie klubu liczymy oknem ROW_NUMBER() i tniemy do `limit`.
+const TOP_ATHLETES_LIMIT = 5;
+
+type AthleteAgg = {
+  name: string;
+  club_id: number;
+  moving_time: number;
+  distance: number;
+  elevation: number;
+  activities: number;
+};
+
+// Rankingi zawodników: „najaktywniejsi w drużynach" (top N per klub) oraz
+// „ranking wszystkich". Liczymy je w jednym zapytaniu pogrupowanym także po
+// week_key, dzięki czemu obok wariantu zbiorczego (wszystkie tygodnie)
+// produkujemy też rozbicie per tydzień — front pozwala wtedy podejrzeć
+// dowolny tydzień bez dodatkowego zapytania do bazy.
+async function athleteRankings(win: Window, clubs: ClubInfo[]) {
   const { clause, winArgs } = whereWindow(win);
   const r = await db().execute({
-    sql: `SELECT club_id, athlete_name, moving_time, distance, activities
-          FROM (
-            SELECT club_id, athlete_name,
-                   SUM(moving_time) AS moving_time,
-                   SUM(distance)    AS distance,
-                   COUNT(*)         AS activities,
-                   ROW_NUMBER() OVER (PARTITION BY club_id ORDER BY SUM(moving_time) DESC) AS rn
-            FROM activities ${clause}
-            GROUP BY club_id, athlete_name
-          ) t
-          WHERE rn <= ?
-          ORDER BY club_id, rn`,
-    args: [...winArgs, limit],
-  });
-
-  const byClub = new Map<number, { name: string; moving_time: number; distance: number; activities: number }[]>();
-  for (const row of r.rows) {
-    const cid = n(row.club_id);
-    if (!byClub.has(cid)) byClub.set(cid, []);
-    byClub.get(cid)!.push({
-      name: s(row.athlete_name),
-      moving_time: n(row.moving_time),
-      distance: n(row.distance),
-      activities: n(row.activities),
-    });
-  }
-
-  return clubs.map((club) => ({
-    club_id: club.id,
-    name: club.name,
-    color: club.color,
-    athletes: byClub.get(club.id) ?? [],
-  }));
-}
-
-async function allAthletes(win: Window) {
-  // Pełny ranking wszystkich zawodników (ze wszystkich drużyn) wg łącznego
-  // czasu aktywności liczących się w wyzwaniu (counted=TRUE, okno czasowe).
-  const { clause, winArgs } = whereWindow(win);
-  const r = await db().execute({
-    sql: `SELECT athlete_name, club_id,
+    sql: `SELECT week_key, club_id, athlete_name,
                  SUM(moving_time) AS moving_time,
                  SUM(distance)    AS distance,
                  SUM(elevation)   AS elevation,
                  COUNT(*)         AS activities
           FROM activities ${clause}
-          GROUP BY athlete_name, club_id
-          ORDER BY moving_time DESC, athlete_name ASC`,
+          GROUP BY week_key, club_id, athlete_name`,
     args: winArgs,
   });
 
-  return r.rows.map((row, i) => ({
-    rank: i + 1,
-    name: s(row.athlete_name),
-    club_id: n(row.club_id),
-    moving_time: n(row.moving_time),
-    distance: n(row.distance),
-    elevation: n(row.elevation),
-    activities: n(row.activities),
-  }));
+  // (klub|zawodnik) -> suma ze wszystkich tygodni; oraz to samo per tydzień.
+  const allAgg = new Map<string, AthleteAgg>();
+  const weekAgg = new Map<string, Map<string, AthleteAgg>>();
+
+  for (const row of r.rows) {
+    const week = s(row.week_key);
+    const club_id = n(row.club_id);
+    const name = s(row.athlete_name);
+    const mt = n(row.moving_time);
+    const dist = n(row.distance);
+    const elev = n(row.elevation);
+    const acts = n(row.activities);
+    const key = `${club_id}|${name}`;
+
+    const add = (map: Map<string, AthleteAgg>) => {
+      let a = map.get(key);
+      if (!a) {
+        a = { name, club_id, moving_time: 0, distance: 0, elevation: 0, activities: 0 };
+        map.set(key, a);
+      }
+      a.moving_time += mt;
+      a.distance += dist;
+      a.elevation += elev;
+      a.activities += acts;
+    };
+
+    add(allAgg);
+    if (!weekAgg.has(week)) weekAgg.set(week, new Map());
+    add(weekAgg.get(week)!);
+  }
+
+  const rankAll = (aggs: AthleteAgg[]) =>
+    [...aggs]
+      .sort((a, b) => b.moving_time - a.moving_time || a.name.localeCompare(b.name, 'pl'))
+      .map((a, i) => ({
+        rank: i + 1,
+        name: a.name,
+        club_id: a.club_id,
+        moving_time: a.moving_time,
+        distance: a.distance,
+        elevation: a.elevation,
+        activities: a.activities,
+      }));
+
+  const topByClub = (aggs: AthleteAgg[]) => {
+    const byClub = new Map<number, AthleteAgg[]>();
+    for (const a of aggs) {
+      if (!byClub.has(a.club_id)) byClub.set(a.club_id, []);
+      byClub.get(a.club_id)!.push(a);
+    }
+    return clubs.map((club) => ({
+      club_id: club.id,
+      name: club.name,
+      color: club.color,
+      athletes: (byClub.get(club.id) ?? [])
+        .sort((a, b) => b.moving_time - a.moving_time || a.name.localeCompare(b.name, 'pl'))
+        .slice(0, TOP_ATHLETES_LIMIT)
+        .map((a) => ({ name: a.name, moving_time: a.moving_time, distance: a.distance, activities: a.activities })),
+    }));
+  };
+
+  const allValues = [...allAgg.values()];
+  const all_athletes = rankAll(allValues);
+  const top_athletes = topByClub(allValues);
+
+  const all_athletes_by_week: Record<string, ReturnType<typeof rankAll>> = {};
+  const top_athletes_by_week: Record<string, ReturnType<typeof topByClub>> = {};
+  for (const [week, map] of weekAgg) {
+    const aggs = [...map.values()];
+    all_athletes_by_week[week] = rankAll(aggs);
+    top_athletes_by_week[week] = topByClub(aggs);
+  }
+
+  return { top_athletes, all_athletes, top_athletes_by_week, all_athletes_by_week };
 }
 
 async function sportBreakdown(win: Window) {

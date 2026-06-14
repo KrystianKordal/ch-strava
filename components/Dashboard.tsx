@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DashboardData } from '@/lib/stats';
 import { sportPl } from '@/lib/sport-names';
 
@@ -357,12 +357,75 @@ function WeeklyTable({ data }: { data: DashboardData }) {
   );
 }
 
+// Wartość oznaczająca „wszystkie tygodnie razem" w selektorze tygodni.
+const ALL_WEEKS = 'all';
+
+type WeekOption = { value: string; label: string };
+
+// Opcje selektora tygodni + domyślny wybór. Domyślnie bieżący tydzień
+// (jeśli jest wśród tygodni wyzwania), w przeciwnym razie ostatni dostępny.
+function useWeekSelection(data: DashboardData) {
+  const options = useMemo<WeekOption[]>(() => {
+    const weeks = data.weekly.map((w) => ({ value: w.week_key, label: w.label }));
+    // Najnowsze tygodnie na górze, a na końcu wariant zbiorczy.
+    return [...[...weeks].reverse(), { value: ALL_WEEKS, label: 'Wszystkie tygodnie' }];
+  }, [data.weekly]);
+
+  const defaultWeek = useMemo(() => {
+    const keys = data.weekly.map((w) => w.week_key);
+    const current = data.current_week.week_key;
+    if (keys.includes(current)) return current;
+    return keys.length ? keys[keys.length - 1] : ALL_WEEKS;
+  }, [data.weekly, data.current_week.week_key]);
+
+  const [week, setWeek] = useState<string>(defaultWeek);
+  // Gdy zmieni się zbiór tygodni (np. po odświeżeniu danych), a wybrany
+  // tydzień zniknie z listy, wróć do domyślnego.
+  useEffect(() => {
+    if (week !== ALL_WEEKS && !options.some((o) => o.value === week)) setWeek(defaultWeek);
+  }, [options, week, defaultWeek]);
+
+  return { week, setWeek, options };
+}
+
+function WeekSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: WeekOption[];
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="week-select">
+      <span className="muted">Tydzień:</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function Athletes({ data }: { data: DashboardData }) {
+  const { week, setWeek, options } = useWeekSelection(data);
+  const clubsData =
+    week === ALL_WEEKS
+      ? data.top_athletes
+      : (data.top_athletes_by_week[week] ??
+        data.clubs.map((c) => ({ club_id: c.id, name: c.name, color: c.color, athletes: [] })));
   return (
     <div className="card">
-      <h2>Najaktywniejsi zawodnicy w drużynach</h2>
+      <div className="card-head">
+        <h2>Najaktywniejsi zawodnicy w drużynach</h2>
+        <WeekSelect value={week} options={options} onChange={setWeek} />
+      </div>
       <div className="grid cols-3">
-        {data.top_athletes.map((club) => (
+        {clubsData.map((club) => (
           <div key={club.club_id}>
             <div style={{ fontWeight: 700, marginBottom: 10 }}>
               {dot(club.color)}
@@ -392,10 +455,14 @@ function Athletes({ data }: { data: DashboardData }) {
 
 function AthletesAll({ data }: { data: DashboardData }) {
   const clubsById = new Map(data.clubs.map((c) => [c.id, c]));
-  const athletes = data.all_athletes ?? [];
+  const { week, setWeek, options } = useWeekSelection(data);
+  const athletes = (week === ALL_WEEKS ? data.all_athletes : data.all_athletes_by_week[week]) ?? [];
   return (
     <div className="card">
-      <h2>Ranking wszystkich zawodników — łączny czas</h2>
+      <div className="card-head">
+        <h2>Ranking wszystkich zawodników — łączny czas</h2>
+        <WeekSelect value={week} options={options} onChange={setWeek} />
+      </div>
       {athletes.length === 0 ? (
         <p className="muted">Brak danych.</p>
       ) : (
