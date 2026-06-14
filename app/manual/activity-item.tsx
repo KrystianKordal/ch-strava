@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 // Kliencki wiersz aktywności w panelu /manual. Wyłączanie/włączanie i usuwanie
 // idą przez fetch (ajax=1) i aktualizują stan w miejscu — strona się NIE
@@ -33,11 +33,14 @@ export type ActivityItemProps = {
 };
 
 export default function ActivityItem(props: ActivityItemProps) {
-  const { id, actAction, keyVal, dotColor, title, sub, manual, edit, filters, weekOptions, sportOptions } = props;
+  const { id, actAction, keyVal, dotColor, manual, edit, filters, weekOptions, sportOptions } = props;
   const [counted, setCounted] = useState(props.initialCounted);
   const [removed, setRemoved] = useState(false);
-  const [busy, setBusy] = useState<null | 'toggle' | 'delete'>(null);
+  const [busy, setBusy] = useState<null | 'toggle' | 'delete' | 'edit'>(null);
   const [error, setError] = useState<string | null>(null);
+  const [display, setDisplay] = useState({ title: props.title, sub: props.sub });
+  const [saved, setSaved] = useState(false);
+  const detailsRef = useRef<HTMLDetailsElement>(null);
 
   async function send(op: 'toggle' | 'delete', extra: Record<string, string> = {}) {
     setBusy(op);
@@ -70,6 +73,34 @@ export default function ActivityItem(props: ActivityItemProps) {
     if (await send('delete')) setRemoved(true);
   }
 
+  async function onEdit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    setBusy('edit');
+    setError(null);
+    try {
+      const body = new URLSearchParams(new FormData(form) as unknown as Record<string, string>);
+      body.set('ajax', '1');
+      const res = await fetch(actAction, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Błąd (${res.status}).`);
+      if (typeof data.title === 'string' && typeof data.sub === 'string') {
+        setDisplay({ title: data.title, sub: data.sub });
+      }
+      if (detailsRef.current) detailsRef.current.open = false;
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (removed) return null;
 
   return (
@@ -77,8 +108,9 @@ export default function ActivityItem(props: ActivityItemProps) {
       <div className="act-head">
         <span className="act-dot" style={{ background: dotColor }} aria-hidden />
         <div className="act-main">
-          <span className="act-title">{title}</span>
-          <span className="act-sub">{sub}</span>
+          <span className="act-title">{display.title}</span>
+          <span className="act-sub">{display.sub}</span>
+          {saved && <span className="ok-txt" style={{ fontSize: 12 }}>✓ zapisano</span>}
           {error && <span className="bad-txt" style={{ fontSize: 12 }}>✗ {error}</span>}
         </div>
         {manual && <span className="act-badge man">ręczna</span>}
@@ -94,9 +126,9 @@ export default function ActivityItem(props: ActivityItemProps) {
         </div>
       </div>
 
-      <details className="act-edit">
+      <details className="act-edit" ref={detailsRef}>
         <summary>Edytuj</summary>
-        <form className="manual-form" method="post" action={actAction}>
+        <form className="manual-form" method="post" action={actAction} onSubmit={onEdit}>
           <input type="hidden" name="key" value={keyVal} />
           <input type="hidden" name="op" value="update" />
           <input type="hidden" name="id" value={id} />
@@ -164,7 +196,9 @@ export default function ActivityItem(props: ActivityItemProps) {
             </label>
           </div>
 
-          <button className="btn" type="submit">Zapisz zmiany</button>
+          <button className="btn" type="submit" disabled={busy !== null}>
+            {busy === 'edit' ? 'Zapisywanie…' : 'Zapisz zmiany'}
+          </button>
         </form>
       </details>
     </div>

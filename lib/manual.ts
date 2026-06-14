@@ -139,6 +139,34 @@ export async function listActivities(filter: ActivityFilter): Promise<ManagedAct
   }));
 }
 
+export async function getActivity(id: number): Promise<ManagedActivity | null> {
+  if (!Number.isInteger(id) || id <= 0) return null;
+  await ensureSchema();
+  const r = await db().execute({
+    sql: `SELECT id, club_id, athlete_name, activity_name, sport_type, type,
+                 distance, moving_time, elevation, week_key, first_seen, counted, fingerprint
+          FROM activities WHERE id = ?`,
+    args: [id],
+  });
+  const row = r.rows[0];
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    club_id: Number(row.club_id),
+    athlete_name: String(row.athlete_name),
+    activity_name: row.activity_name == null ? null : String(row.activity_name),
+    sport_type: row.sport_type == null ? null : String(row.sport_type),
+    type: row.type == null ? null : String(row.type),
+    distance: Number(row.distance),
+    moving_time: Number(row.moving_time),
+    elevation: Number(row.elevation),
+    week_key: String(row.week_key),
+    first_seen: String(row.first_seen),
+    counted: Boolean(row.counted),
+    manual: String(row.fingerprint).startsWith('manual-'),
+  };
+}
+
 export async function deleteActivity(id: number): Promise<void> {
   if (!Number.isInteger(id) || id <= 0) throw new Error('Nieprawidłowe ID aktywności.');
   await ensureSchema();

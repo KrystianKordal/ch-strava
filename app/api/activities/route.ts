@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { deleteActivity, setActivityCounted, updateActivity } from '@/lib/manual';
-import { cronSecret, isProd } from '@/lib/config';
+import { deleteActivity, getActivity, setActivityCounted, updateActivity } from '@/lib/manual';
+import { clubs, cronSecret, isProd } from '@/lib/config';
+import { activityDisplay } from '@/lib/activity-format';
 import { safeEqual } from '@/lib/safe-equal';
 
 export const runtime = 'nodejs';
@@ -38,15 +39,18 @@ export async function POST(req: NextRequest) {
   const ajax = String(form.get('ajax') ?? '') === '1';
   // Tryb AJAX: zwracamy JSON i nie przeładowujemy strony. Zwykły formularz:
   // redirect 303 z powrotem na /manual z zachowanym kluczem i filtrami.
-  const done = (params: { ok?: string; error?: string }, status = 200) => {
+  const done = (params: { ok?: string; error?: string; data?: Record<string, unknown> }, status = 200) => {
     if (ajax) {
       return NextResponse.json(
-        params.error ? { error: params.error } : { ok: true, message: params.ok ?? '' },
+        params.error ? { error: params.error } : { ok: true, message: params.ok ?? '', ...(params.data ?? {}) },
         { status: params.error ? status : 200 },
       );
     }
+    const msg: Record<string, string> = {};
+    if (params.ok) msg.ok = params.ok;
+    if (params.error) msg.error = params.error;
     return NextResponse.redirect(
-      new URL(`/manual?${new URLSearchParams({ ...(key ? { key } : {}), ...filters, ...params })}`, req.url),
+      new URL(`/manual?${new URLSearchParams({ ...(key ? { key } : {}), ...filters, ...msg })}`, req.url),
       { status: 303 },
     );
   };
@@ -81,7 +85,11 @@ export async function POST(req: NextRequest) {
         weekKey: String(form.get('week')),
         firstSeen: (form.get('first_seen') as string) || undefined,
       });
-      return done({ ok: 'Aktywność zaktualizowana.' });
+      // Odświeżony tytuł/opis wiersza do aktualizacji w miejscu (AJAX).
+      const row = await getActivity(id);
+      const clubName = (cid: number) => clubs.find((c) => c.id === cid)?.name ?? `#${cid}`;
+      const data = row ? activityDisplay(row, clubName(row.club_id)) : undefined;
+      return done({ ok: 'Aktywność zaktualizowana.', data });
     }
     return done({ error: 'Nieznana operacja.' }, 400);
   } catch (e) {

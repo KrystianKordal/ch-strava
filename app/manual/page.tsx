@@ -1,35 +1,14 @@
-import { DateTime } from 'luxon';
-import { clubs, challenge, timezone, cronSecret, isProd } from '@/lib/config';
+import { clubs, challenge, cronSecret, isProd } from '@/lib/config';
 import { safeEqual } from '@/lib/safe-equal';
 import { weeksBetween, weekLabel, weekKeyFor } from '@/lib/week';
 import { sportPl } from '@/lib/sport-names';
 import { listActivities } from '@/lib/manual';
+import { hm, toLocalInput, activityDisplay } from '@/lib/activity-format';
 import ActivityItem from './activity-item';
 
 export const dynamic = 'force-dynamic';
 
 const SPORTS = ['Run', 'Ride', 'Walk', 'Swim', 'Hike', 'WeightTraining', 'VirtualRide', 'Inne'];
-
-function hm(sec: number): { h: number; m: number } {
-  const s = Math.max(0, Math.trunc(sec));
-  return { h: Math.floor(s / 3600), m: Math.floor((s % 3600) / 60) };
-}
-function fmtTime(sec: number): string {
-  const { h, m } = hm(sec);
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
-function fmtKm(m: number): string {
-  return m > 0 ? `${(m / 1000).toFixed(2)} km` : '—';
-}
-/** ISO (z offsetem) → wartość dla <input type="datetime-local"> w strefie wyzwania. */
-function toLocalInput(iso: string): string {
-  const d = DateTime.fromISO(iso).setZone(timezone);
-  return d.isValid ? d.toFormat("yyyy-LL-dd'T'HH:mm") : '';
-}
-function fmtSeen(iso: string): string {
-  const d = DateTime.fromISO(iso).setZone(timezone);
-  return d.isValid ? d.toFormat('dd.LL.yyyy HH:mm') : iso;
-}
 
 // Ręczne dopisywanie aktywności + panel zarządzania (edycja / usunięcie /
 // wyłączenie z liczenia). Chronione tym samym sekretem co /api/poll:
@@ -229,6 +208,7 @@ export default async function ManualPage({
               const { h, m } = hm(a.moving_time);
               const weekKeys = weeks.includes(a.week_key) ? weeks : [a.week_key, ...weeks];
               const sportKeys = SPORTS.includes(sport) ? SPORTS : [sport, ...SPORTS];
+              const { title, sub } = activityDisplay(a, clubName(a.club_id));
               return (
                 <ActivityItem
                   key={a.id}
@@ -236,8 +216,8 @@ export default async function ManualPage({
                   actAction={actAction}
                   keyVal={key}
                   dotColor={clubColor(a.club_id)}
-                  title={`${a.athlete_name} · ${a.activity_name || sportPl(sport) || 'Aktywność'}`}
-                  sub={`${clubName(a.club_id)} · ${sportPl(sport)} · ${fmtTime(a.moving_time)} · ${fmtKm(a.distance)} · ${a.week_key} · ${fmtSeen(a.first_seen)}`}
+                  title={title}
+                  sub={sub}
                   manual={a.manual}
                   initialCounted={a.counted}
                   filters={filters}
