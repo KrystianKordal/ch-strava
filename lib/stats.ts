@@ -542,10 +542,19 @@ async function buildHallOfFame(
   const byAthlete = new Map<string, { club_id: number; athlete: string; weeks: Map<string, AthAgg>; sports: Set<string> }>();
   const teamWeek = new Map<string, { club_id: number; week: string; total: number; sunday: number; athletes: Map<string, number> }>();
 
+  // WSZYSTKIE osiągnięcia liczymy wyłącznie z zakończonych tygodni — bieżący,
+  // niepełny tydzień zafałszowywałby wyniki (wygląda jak nagły spadek/cisza).
+  // Pomijamy więc aktywności z trwającego tygodnia już na etapie agregacji,
+  // dzięki czemu każde osiągnięcie automatycznie bierze pod uwagę tylko
+  // rozstrzygnięte tygodnie.
+  const endedWeekly = weekly.filter((w) => w.ended);
+  const endedWeekKeys = new Set(endedWeekly.map((w) => w.week_key));
+
   for (const row of r.rows) {
     const club_id = n(row.club_id);
     const athlete = s(row.athlete_name);
     const week = s(row.week_key);
+    if (!endedWeekKeys.has(week)) continue;
     const moving = n(row.moving_time);
     const sport = s(row.sport);
     const fs = s(row.first_seen);
@@ -581,10 +590,7 @@ async function buildHallOfFame(
     tw.athletes.set(athlete, (tw.athletes.get(athlete) ?? 0) + moving);
   }
 
-  // Osiągnięcia porównujące tydzień-do-tygodnia (serie zawodników, awanse,
-  // spadki) liczymy WYŁĄCZNIE z zakończonych tygodni. Bieżący, niepełny
-  // tydzień zawsze wygląda jak nagły spadek i generował głupie wyniki.
-  const endedWeekly = weekly.filter((w) => w.ended);
+  // Klucze zakończonych tygodni (do serii zawodników, awansów, spadków itp.).
   const weeks = endedWeekly.map((w) => w.week_key);
   const numClubs = clubs.length;
   const hasTwoWeeks = weeks.length >= 2;
@@ -776,10 +782,11 @@ async function buildHallOfFame(
     if (!tasma || margin < tasma.margin) tasma = { margin, club_id: w.winners[0], label: w.label };
   }
 
-  // 12b. Walec — najbardziej miażdżąca przewaga lidera w tygodniu. „Łagodne":
-  // bierzemy też trwający tydzień, byle był wyraźny lider (max > drugi, >0).
+  // 12b. Walec — najbardziej miażdżąca przewaga lidera w zakończonym tygodniu
+  // (musi być wyraźny lider: max > drugi, >0).
   let walec: { margin: number; club_id: number; label: string } | null = null;
   for (const w of weekly) {
+    if (!w.ended) continue;
     const sorted = [...w.clubs].sort((a, b) => b.moving_time - a.moving_time);
     if (sorted.length < 2 || sorted[0].moving_time <= 0 || sorted[0].moving_time === sorted[1].moving_time) continue;
     const margin = sorted[0].moving_time - sorted[1].moving_time;
