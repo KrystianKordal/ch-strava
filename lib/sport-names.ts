@@ -60,3 +60,7 @@ export function sportPl(sport?: string | null): string {
   if (!key) return '';
   return SPORT_PL[key] ?? key;
 }
+
+// Wszystkie znane typy aktywności (klucze Stravy) w kolejności ze słownika —
+// do selektorów w panelu /manual. 'Inne' zostaje na końcu.
+export const SPORT_KEYS = Object.keys(SPORT_PL);

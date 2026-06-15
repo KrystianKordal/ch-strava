@@ -1,14 +1,16 @@
 import { clubs, challenge, cronSecret, isProd } from '@/lib/config';
 import { safeEqual } from '@/lib/safe-equal';
 import { weeksBetween, weekLabel, weekKeyFor } from '@/lib/week';
-import { sportPl } from '@/lib/sport-names';
+import { sportPl, SPORT_KEYS } from '@/lib/sport-names';
 import { listActivities } from '@/lib/manual';
 import { hm, toLocalInput, activityDisplay } from '@/lib/activity-format';
 import ActivityItem from './activity-item';
 
 export const dynamic = 'force-dynamic';
 
-const SPORTS = ['Run', 'Ride', 'Walk', 'Swim', 'Hike', 'WeightTraining', 'VirtualRide', 'Inne'];
+// Pełna lista typów aktywności (ze słownika tłumaczeń) — żeby przy ręcznym
+// dopisywaniu/edycji dało się wybrać dowolny sport, nie tylko najczęstsze.
+const SPORTS = SPORT_KEYS;
 
 // Ręczne dopisywanie aktywności + panel zarządzania (edycja / usunięcie /
 // wyłączenie z liczenia). Chronione tym samym sekretem co /api/poll:
