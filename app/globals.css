@@ -170,6 +170,7 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: upp
 tbody tr { border-bottom: 1px solid var(--border); }
 tbody tr:last-child { border-bottom: 0; }
 tbody tr:hover { background: var(--bg-elev); }
+th.num { text-align: right; }
 td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .win-cell { font-weight: 700; }
 .win-badge {

@@ -489,7 +489,7 @@ function highlights(totals: Awaited<ReturnType<typeof loadTotals>>): Highlights 
 }
 
 // ---------- Hala Sław ----------
-// 14 humorystycznych osiągnięć liczonych WZGLĘDNIE (najlepszy kandydat wśród
+// 15 humorystycznych osiągnięć liczonych WZGLĘDNIE (najlepszy kandydat wśród
 // pozostałych), żeby zawsze ktoś się załapał. Osiągnięcia wymagające
 // porównań tydzień-do-tygodnia są wyszarzone (available=false), dopóki nie ma
 // dość danych. Trzy osiągnięcia czasowe (Weekendowy Wojownik, As z Rękawa,
@@ -531,13 +531,15 @@ async function buildHallOfFame(
 ): Promise<HallOfFameAward[]> {
   const { clause, winArgs } = whereWindow(win);
   const r = await db().execute({
-    sql: `SELECT club_id, athlete_name, week_key, moving_time, first_seen FROM activities ${clause}`,
+    sql: `SELECT club_id, athlete_name, week_key, moving_time, first_seen,
+                 COALESCE(NULLIF(sport_type, ''), COALESCE(NULLIF(type, ''), 'Inne')) AS sport
+          FROM activities ${clause}`,
     args: winArgs,
   });
 
   // Agregacja w TS (luxon, strefa wyzwania) — zbiór danych jest mały, a logika
   // dni tygodnia zostaje spójna z resztą aplikacji.
-  const byAthlete = new Map<string, { club_id: number; athlete: string; weeks: Map<string, AthAgg> }>();
+  const byAthlete = new Map<string, { club_id: number; athlete: string; weeks: Map<string, AthAgg>; sports: Set<string> }>();
   const teamWeek = new Map<string, { club_id: number; week: string; total: number; sunday: number; athletes: Map<string, number> }>();
 
   for (const row of r.rows) {
@@ -545,6 +547,7 @@ async function buildHallOfFame(
     const athlete = s(row.athlete_name);
     const week = s(row.week_key);
     const moving = n(row.moving_time);
+    const sport = s(row.sport);
     const fs = s(row.first_seen);
     const wd = fs ? DateTime.fromISO(fs).setZone(timezone).weekday : 0; // 1=pon … 7=niedz
     const isWeekend = wd === 6 || wd === 7;
@@ -553,9 +556,10 @@ async function buildHallOfFame(
     const aKey = `${club_id}|${athlete}`;
     let a = byAthlete.get(aKey);
     if (!a) {
-      a = { club_id, athlete, weeks: new Map() };
+      a = { club_id, athlete, weeks: new Map(), sports: new Set() };
       byAthlete.set(aKey, a);
     }
+    if (sport) a.sports.add(sport);
     let aw = a.weeks.get(week);
     if (!aw) {
       aw = { total: 0, longest: 0, weekend: 0, sunday: 0 };
@@ -812,6 +816,16 @@ async function buildHallOfFame(
     }
   }
 
+  // 15. Multiklasowiec — najwięcej różnych typów aktywności w całym wyzwaniu.
+  // Liczone z sport_type (z fallbackiem na type), spójnie z rozkładem dyscyplin.
+  let multi: { count: number; athlete: string; club_id: number } | null = null;
+  for (const a of byAthlete.values()) {
+    const count = a.sports.size;
+    if (count < 2) continue; // jeden typ to nie multiklasowiec
+    if (!multi || count > multi.count || (count === multi.count && a.athlete.localeCompare(multi.athlete, 'pl') < 0))
+      multi = { count, athlete: a.athlete, club_id: a.club_id };
+  }
+
   return [
     make(
       { key: 'feniks', icon: '🔥', title: 'Efekt Feniksa', subtitle: 'Najlepszy Powrót', scope: 'athlete', tip: 'Największy wzrost liczby godzin tydzień do tygodnia.' },
@@ -840,6 +854,10 @@ async function buildHallOfFame(
     make(
       { key: 'supernowa', icon: '💫', title: 'Efekt Supernowej', subtitle: 'Nagły Wystrzał', scope: 'athlete', tip: 'Robił niewiele, a w jednym tygodniu wystrzelił z kosmiczną liczbą godzin.' },
       hasTwoWeeks && supernowa ? { winner: supernowa.athlete, club_id: supernowa.club_id, metric: `${hms(supernowa.maxV)} vs śr. ${hms(supernowa.base)} (×${supernowa.ratio.toFixed(1)}, ${supernowa.week})` } : null,
+    ),
+    make(
+      { key: 'multiklasowiec', icon: '🤹', title: 'Multiklasowiec', subtitle: 'Żadnej Pracy Się Nie Boi', scope: 'athlete', tip: 'Osoba z największą liczbą różnych typów aktywności w trakcie całego wyzwania.' },
+      multi ? { winner: multi.athlete, club_id: multi.club_id, metric: `${multi.count} różnych typów aktywności` } : null,
     ),
     make(
       { key: 'monolit', icon: '🧱', title: 'Monolit', subtitle: 'Gra Zespołowa', scope: 'team', tip: 'Najbardziej zespołowa drużyna — najmniejsza różnica między najlepszym a najsłabszym zawodnikiem w tygodniu.' },
