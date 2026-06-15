@@ -18,7 +18,6 @@ export type ActivityItemProps = {
   initialCounted: boolean;
   filters: { fclub?: string; fweek?: string; fathlete?: string; fday?: string };
   weekOptions: { key: string; label: string }[];
-  sportOptions: { value: string; label: string }[];
   edit: {
     week: string;
     firstSeenLocal: string;
@@ -33,7 +32,7 @@ export type ActivityItemProps = {
 };
 
 export default function ActivityItem(props: ActivityItemProps) {
-  const { id, actAction, keyVal, dotColor, manual, edit, filters, weekOptions, sportOptions } = props;
+  const { id, actAction, keyVal, dotColor, manual, edit, filters, weekOptions } = props;
   const [counted, setCounted] = useState(props.initialCounted);
   const [removed, setRemoved] = useState(false);
   const [busy, setBusy] = useState<null | 'toggle' | 'delete' | 'edit'>(null);
@@ -166,13 +165,8 @@ export default function ActivityItem(props: ActivityItemProps) {
 
           <label>
             Sport
-            <select name="sport" defaultValue={edit.sport}>
-              {sportOptions.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
+            <input name="sport" list="manual-sports" defaultValue={edit.sport} placeholder="np. Run" autoComplete="off" />
+            <span className="hint">Wybierz z podpowiedzi lub wpisz dowolny typ aktywności.</span>
           </label>
 
           <div className="row2">

@@ -74,6 +74,14 @@ export default async function ManualPage({
     <div className="auth-wrap">
       <h1>Ręczne dopisanie aktywności</h1>
 
+      {/* Wspólna lista podpowiedzi typów aktywności dla formularza dodawania
+          i wszystkich formularzy edycji (pole sport to wolny tekst). */}
+      <datalist id="manual-sports">
+        {SPORTS.map((sportKey) => (
+          <option key={sportKey} value={sportKey} label={sportPl(sportKey)} />
+        ))}
+      </datalist>
+
       {sp.ok && <p className="ok-txt">✓ {sp.ok === '1' ? 'Aktywność dopisana. Możesz dodać kolejną.' : sp.ok}</p>}
       {sp.error && <p className="bad-txt">✗ {sp.error}</p>}
 
@@ -129,13 +137,10 @@ export default async function ManualPage({
 
         <label>
           Sport
-          <select name="sport" defaultValue="Run">
-            {SPORTS.map((s) => (
-              <option key={s} value={s}>
-                {sportPl(s)}
-              </option>
-            ))}
-          </select>
+          <input name="sport" list="manual-sports" defaultValue="Run" placeholder="np. Run" autoComplete="off" />
+          <span className="hint">
+            Wybierz z podpowiedzi lub wpisz dowolny typ aktywności (nazwa ze Stravy, np. „Run", „Ride").
+          </span>
         </label>
 
         <div className="row2">
@@ -216,7 +221,6 @@ export default async function ManualPage({
               const sport = a.sport_type ?? a.type ?? 'Inne';
               const { h, m } = hm(a.moving_time);
               const weekKeys = weeks.includes(a.week_key) ? weeks : [a.week_key, ...weeks];
-              const sportKeys = SPORTS.includes(sport) ? SPORTS : [sport, ...SPORTS];
               const { title, sub } = activityDisplay(a, clubName(a.club_id));
               return (
                 <ActivityItem
@@ -231,7 +235,6 @@ export default async function ManualPage({
                   initialCounted={a.counted}
                   filters={filters}
                   weekOptions={weekKeys.map((wk) => ({ key: wk, label: weekLabel(wk) }))}
-                  sportOptions={sportKeys.map((s) => ({ value: s, label: sportPl(s) }))}
                   edit={{
                     week: a.week_key,
                     firstSeenLocal: toLocalInput(a.first_seen),
