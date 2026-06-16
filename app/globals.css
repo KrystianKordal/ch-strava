@@ -132,6 +132,15 @@ body {
 .podium-col .club { font-weight: 700; margin: 6px 0 2px; font-size: 16px; color: var(--heading); }
 .podium-col .wins { font-size: 30px; font-weight: 800; color: var(--heading); }
 .podium-col .wins small { font-size: 13px; font-weight: 500; color: var(--muted); }
+.podium-col .place-counts {
+    display: flex; justify-content: center; gap: 10px;
+    margin: 4px 0 6px; font-size: 13px; font-weight: 600; color: var(--heading);
+}
+.points-legend { font-size: 12px; }
+.pts {
+    margin-left: 5px; font-size: 11px; font-weight: 700;
+    color: var(--accent); vertical-align: super;
+}
 .club-dot {
     display: inline-block; width: 10px; height: 10px;
     border-radius: 50%; margin-right: 6px; vertical-align: middle;

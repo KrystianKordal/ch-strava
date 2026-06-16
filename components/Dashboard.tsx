@@ -176,10 +176,25 @@ function Content({ data }: { data: DashboardData }) {
   );
 }
 
+function plPoints(n: number): string {
+  // Polska odmiana: 1 punkt, 2–4 punkty, 0/5+ punktów (z wyjątkiem 12–14).
+  const abs = Math.abs(n);
+  const d = abs % 10;
+  const dd = abs % 100;
+  if (n === 1) return 'punkt';
+  if (d >= 2 && d <= 4 && (dd < 12 || dd > 14)) return 'punkty';
+  return 'punktów';
+}
+
 function Standings({ data }: { data: DashboardData }) {
   return (
     <div className="card">
-      <h2>Klasyfikacja generalna — wygrane tygodnie</h2>
+      <div className="card-head">
+        <h2>Klasyfikacja generalna — punkty</h2>
+        <span className="muted points-legend">
+          🥇 wygrany tydzień = 3 pkt · 🥈 drugie miejsce = 1 pkt · 🥉 trzecie = 0 pkt
+        </span>
+      </div>
       <div className="podium">
         {data.standings.map((s, i) => (
           <div key={s.club_id} className={`podium-col${i === 0 ? ' first' : ''}`} style={{ borderTopColor: s.color }}>
@@ -190,8 +205,13 @@ function Standings({ data }: { data: DashboardData }) {
               {s.name}
             </div>
             <div className="wins">
-              {s.weeks_won}
-              <small> tyg.</small>
+              {s.points}
+              <small> {plPoints(s.points)}</small>
+            </div>
+            <div className="place-counts" title="Zajęte miejsca w zakończonych tygodniach">
+              <span>🥇 {s.weeks_won}</span>
+              <span>🥈 {s.seconds}</span>
+              <span>🥉 {s.thirds}</span>
             </div>
             <div className="muted">{dur(s.total_time)} łącznie</div>
           </div>
@@ -206,7 +226,7 @@ function Tiles({ data }: { data: DashboardData }) {
   const leader = data.standings[0];
   const periodSub = data.phase === 'before' ? 'okres przygotowawczy' : 'w oknie wyzwania';
   const tiles = [
-    { label: 'Prowadzi', value: leader ? leader.name : '—', sub: leader ? `${leader.weeks_won} wygranych tygodni` : '' },
+    { label: 'Prowadzi', value: leader ? leader.name : '—', sub: leader ? `${leader.points} ${plPoints(leader.points)} · ${leader.weeks_won} wygranych tyg.` : '' },
     { label: 'Łączny czas', value: `${fmtDec1(Number(h.total_hours ?? 0))} h`, sub: 'wszystkie kluby' },
     { label: 'Aktywności', value: fmtInt(Number(h.total_activities ?? 0)), sub: periodSub },
     { label: 'Dystans', value: `${fmtDec1(Number(h.total_distance_km ?? 0))} km`, sub: 'razem' },
@@ -333,6 +353,7 @@ function WeeklyTable({ data }: { data: DashboardData }) {
                     const x = byClub.get(c.id);
                     // Tydzień jeszcze trwa — nie wyróżniamy zwycięzcy, bo nie jest rozstrzygnięty.
                     const winner = w.ended && x?.winner;
+                    const showPts = w.ended && !!x && x.points > 0;
                     return (
                       <td
                         key={c.id}
@@ -340,6 +361,7 @@ function WeeklyTable({ data }: { data: DashboardData }) {
                         style={winner ? { color: c.color } : undefined}
                       >
                         {x ? dur(x.moving_time) : '—'}
+                        {showPts && <small className="pts">+{x.points}</small>}
                       </td>
                     );
                   })}

@@ -152,7 +152,18 @@ type WeeklyClub = {
   activities: number;
   athletes: number;
   winner: boolean;
+  // Miejsce w tygodniu (1/2/3) wśród drużyn z aktywnością; 0 = brak aktywności.
+  place: number;
+  // Punkty za tydzień: 1. miejsce = 3 pkt, 2. = 1 pkt, 3. = 0 pkt.
+  points: number;
 };
+
+// Punkty za miejsce w tygodniu: zwycięstwo 3 pkt, drugie miejsce 1 pkt,
+// trzecie (i dalsze) 0 pkt. To podstawa nowej klasyfikacji generalnej.
+const POINTS_FOR_PLACE: Record<number, number> = { 1: 3, 2: 1 };
+function pointsForPlace(place: number): number {
+  return POINTS_FOR_PLACE[place] ?? 0;
+}
 type WeeklyRow = {
   week_key: string;
   label: string;
@@ -200,6 +211,8 @@ async function weeklyResults(win: Window, weeks: string[], clubs: ClubInfo[]): P
         activities: n(row?.activities),
         athletes: n(row?.athletes),
         winner: false,
+        place: 0,
+        points: 0,
       });
       maxTime = Math.max(maxTime, time);
     }
@@ -214,36 +227,69 @@ async function weeklyResults(win: Window, weeks: string[], clubs: ClubInfo[]): P
       }
     }
 
+    // Miejsce i punkty dla każdej drużyny. Tylko drużyny, które miały jakąkolwiek
+    // aktywność w tym tygodniu, zajmują miejsce — remisy dzielą miejsce (np. dwie
+    // drużyny na 1. miejscu obie dostają 3 pkt, a trzecia trafia na 3. miejsce).
+    for (const row of clubRows) {
+      if (row.moving_time <= 0) continue;
+      row.place = 1 + clubRows.filter((c) => c.moving_time > row.moving_time).length;
+      row.points = pointsForPlace(row.place);
+    }
+
     const ended = weekRange(wk)[1] < win.now;
     result.push({ week_key: wk, label: weekLabel(wk), clubs: clubRows, winners, tie: winners.length > 1, ended });
   }
   return result;
 }
 
-function buildStandings(weekly: WeeklyRow[], clubs: ClubInfo[]) {
-  const wins = new Map<number, number>();
-  const totalTime = new Map<number, number>();
-  for (const club of clubs) {
-    wins.set(club.id, 0);
-    totalTime.set(club.id, 0);
-  }
+type Standing = {
+  club_id: number;
+  name: string;
+  color: string;
+  points: number;
+  weeks_won: number;
+  seconds: number;
+  thirds: number;
+  total_time: number;
+  rank: number;
+};
+
+function buildStandings(weekly: WeeklyRow[], clubs: ClubInfo[]): Standing[] {
+  const acc = new Map<number, { points: number; firsts: number; seconds: number; thirds: number; time: number }>();
+  for (const club of clubs) acc.set(club.id, { points: 0, firsts: 0, seconds: 0, thirds: 0, time: 0 });
+
   for (const w of weekly) {
-    // Wygrane liczymy tylko z zakończonych tygodni — bieżący trwający tydzień
-    // nie jest jeszcze rozstrzygnięty. Czas łączny zbieramy ze wszystkich.
-    if (w.ended) for (const cid of w.winners) wins.set(cid, (wins.get(cid) ?? 0) + 1);
-    for (const row of w.clubs) totalTime.set(row.club_id, (totalTime.get(row.club_id) ?? 0) + row.moving_time);
+    for (const row of w.clubs) {
+      const a = acc.get(row.club_id);
+      if (!a) continue;
+      // Czas łączny zbieramy ze wszystkich tygodni; punkty i miejsca tylko z
+      // zakończonych — bieżący, trwający tydzień nie jest jeszcze rozstrzygnięty.
+      a.time += row.moving_time;
+      if (!w.ended) continue;
+      a.points += row.points;
+      if (row.place === 1) a.firsts += 1;
+      else if (row.place === 2) a.seconds += 1;
+      else if (row.place === 3) a.thirds += 1;
+    }
   }
 
-  const out = clubs.map((club) => ({
-    club_id: club.id,
-    name: club.name,
-    color: club.color,
-    weeks_won: wins.get(club.id) ?? 0,
-    total_time: totalTime.get(club.id) ?? 0,
-    rank: 0,
-  }));
+  const out: Standing[] = clubs.map((club) => {
+    const a = acc.get(club.id)!;
+    return {
+      club_id: club.id,
+      name: club.name,
+      color: club.color,
+      points: a.points,
+      weeks_won: a.firsts,
+      seconds: a.seconds,
+      thirds: a.thirds,
+      total_time: a.time,
+      rank: 0,
+    };
+  });
 
-  out.sort((a, b) => b.weeks_won - a.weeks_won || b.total_time - a.total_time);
+  // Główne kryterium: punkty. Remis → więcej wygranych tygodni, dalej łączny czas.
+  out.sort((a, b) => b.points - a.points || b.weeks_won - a.weeks_won || b.total_time - a.total_time);
   out.forEach((row, i) => (row.rank = i + 1));
   return out;
 }
