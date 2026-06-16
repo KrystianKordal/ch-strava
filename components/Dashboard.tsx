@@ -209,9 +209,9 @@ function Standings({ data }: { data: DashboardData }) {
               <small> {plPoints(s.points)}</small>
             </div>
             <div className="place-counts" title="Zajęte miejsca w zakończonych tygodniach">
-              <span>🥇 {s.weeks_won}</span>
-              <span>🥈 {s.seconds}</span>
-              <span>🥉 {s.thirds}</span>
+              <span title="Pierwsze miejsca">①×{s.weeks_won}</span>
+              <span title="Drugie miejsca">②×{s.seconds}</span>
+              <span title="Trzecie miejsca">③×{s.thirds}</span>
             </div>
             <div className="muted">{dur(s.total_time)} łącznie</div>
           </div>
