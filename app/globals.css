@@ -132,6 +132,25 @@ body {
 .podium-col .club { font-weight: 700; margin: 6px 0 2px; font-size: 16px; color: var(--heading); }
 .podium-col .wins { font-size: 30px; font-weight: 800; color: var(--heading); }
 .podium-col .wins small { font-size: 13px; font-weight: 500; color: var(--muted); }
+.podium-col .place-counts {
+    display: flex; justify-content: center; gap: 12px;
+    margin: 6px 0 8px; font-size: 13px; font-weight: 700; color: var(--muted);
+}
+.place-count { display: inline-flex; align-items: center; gap: 4px; }
+.place-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 19px; height: 19px; border-radius: 50%;
+    font-size: 11px; font-weight: 800; line-height: 1; color: #fff;
+    box-shadow: var(--shadow-sm);
+}
+.place-badge.p1 { background: linear-gradient(145deg, #f7d774, #d4a017); }
+.place-badge.p2 { background: linear-gradient(145deg, #d8dde3, #9aa3ad); }
+.place-badge.p3 { background: linear-gradient(145deg, #e0a875, #b5722f); }
+.points-legend { font-size: 12px; }
+.pts {
+    margin-left: 5px; font-size: 11px; font-weight: 700;
+    color: var(--accent); vertical-align: super;
+}
 .club-dot {
     display: inline-block; width: 10px; height: 10px;
     border-radius: 50%; margin-right: 6px; vertical-align: middle;

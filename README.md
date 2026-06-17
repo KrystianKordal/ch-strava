@@ -8,7 +8,8 @@ Jednostronicowy dashboard rywalizacji **3 drużyn** na Strava, gotowy do wdroże
 
 ## Zasady wyzwania
 - Każdy **tydzień** wygrywa drużyna z największą liczbą **godzin aktywności** (`moving_time`).
-- Wygrywa drużyna z **największą liczbą wygranych tygodni** (remis → łączny czas).
+- Za miejsce w tygodniu drużyna dostaje **punkty**: 1. miejsce = **3 pkt**, 2. miejsce = **1 pkt**, 3. miejsce = **0 pkt** (remis dzieli miejsce — obie drużyny biorą punkty wyższej pozycji).
+- Wygrywa drużyna z **największą liczbą punktów** (remis → więcej wygranych tygodni, dalej łączny czas). Liczba wygranych tygodni i zajętych miejsc (🥇🥈🥉) zostaje jako ciekawostka.
 - Wyzwanie trwa **8 cze – 31 lip 2026** (`lib/config.ts`). Przed startem widać „okres przygotowawczy", ale po starcie **liczą się tylko aktywności z okna wyzwania** — wcześniejsze są pomijane.
 
 ---
