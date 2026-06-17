@@ -452,6 +452,9 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
     .podium-col .club { font-size: 13px; }
     .podium-col .wins { font-size: 24px; }
     .podium-col .muted { font-size: 12px; }
+    .podium-col .place-counts { gap: 7px; font-size: 11px; flex-wrap: wrap; }
+    .place-count { gap: 2px; }
+    .place-badge { width: 16px; height: 16px; font-size: 10px; }
 
     .tile { padding: 14px; }
     .tile .value { font-size: 22px; }
