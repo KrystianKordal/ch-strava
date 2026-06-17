@@ -44,7 +44,13 @@ function fingerprint(athlete: string, a: StravaActivity): string {
     .digest('hex');
 }
 
-export async function runPoll(): Promise<PollResult> {
+/**
+ * Pobiera aktywności i zapisuje nowe. Bez argumentu odpytuje wszystkie kluby;
+ * z `clubId` tylko ten jeden — dzięki temu można rozłożyć pracę na osobne
+ * wywołania per klub (po jednym żądaniu na drużynę), żeby nie przekroczyć
+ * limitu czasu funkcji przy wielu aktywnościach.
+ */
+export async function runPoll(clubId?: number): Promise<PollResult> {
   await ensureSchema();
   await syncClubs(clubs);
 
@@ -53,7 +59,8 @@ export async function runPoll(): Promise<PollResult> {
   const weekKey = currentWeekKey();
   const result: PollResult = { ran_at: now, week_key: weekKey, clubs: [] };
 
-  for (const club of clubs) {
+  const targets = clubId == null ? clubs : clubs.filter((cl) => cl.id === clubId);
+  for (const club of targets) {
     const token = await hasToken(club.id);
     if (!token) {
       result.clubs.push({ id: club.id, name: club.name, status: 'brak autoryzacji' });

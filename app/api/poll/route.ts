@@ -1,30 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runPoll } from '@/lib/poll';
-import { cronSecret, isProd } from '@/lib/config';
-import { safeEqual } from '@/lib/safe-equal';
+import { pollAuthorized } from '@/lib/poll-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-// Ręczny trigger pollingu (pobranie aktywności drużyn i zapis nowych).
-// Odpalasz go sam, kiedy chcesz odświeżyć dane — przez przeglądarkę,
+// Ręczny trigger pollingu wszystkich drużyn naraz (pobranie aktywności i zapis
+// nowych). Odpalasz go sam, kiedy chcesz odświeżyć dane — przez przeglądarkę,
 // curl albo dowolny zewnętrzny scheduler.
 //
-// Jeśli POLL_SECRET (alias: CRON_SECRET) jest ustawiony, klucz trzeba podać:
-//   • w URL-u:  /api/poll?key=<SEKRET>      (najwygodniej — klikalny link)
-//   • lub w nagłówku:  Authorization: Bearer <SEKRET>
-// Bez ustawionego sekretu endpoint jest otwarty (wygodne lokalnie).
-function authorized(req: NextRequest): boolean {
-  // Brak sekretu: otwarte tylko lokalnie. W produkcji = fail-closed.
-  if (!cronSecret) return !isProd;
-  const fromQuery = req.nextUrl.searchParams.get('key') ?? '';
-  const fromHeader = req.headers.get('authorization') ?? '';
-  return safeEqual(fromQuery, cronSecret) || safeEqual(fromHeader, `Bearer ${cronSecret}`);
-}
+// Uwaga: przy dużej liczbie aktywności ten wariant może ocierać się o limit
+// czasu funkcji (maxDuration). Aby rozłożyć pracę, odpytuj każdą drużynę
+// osobno przez /api/poll/<clubId> (po jednym żądaniu na klub).
+//
+// Autoryzacja: patrz lib/poll-auth.ts (?key=<SEKRET> lub nagłówek Bearer).
 
 async function handle(req: NextRequest) {
-  if (!authorized(req)) {
+  if (!pollAuthorized(req)) {
     return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
   }
   try {

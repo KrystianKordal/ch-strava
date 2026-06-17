@@ -70,6 +70,14 @@ curl -H "Authorization: Bearer <POLL_SECRET>" https://twoja-app.vercel.app/api/p
 ```
 Endpoint pobiera aktywności wszystkich drużyn i zapisuje nowe (deduplikacja po odcisku palca). Zwraca JSON z podsumowaniem (`seen`/`new`/`baseline` na drużynę).
 
+**Polling per drużyna.** Przy dużej liczbie aktywności poll wszystkich drużyn naraz może ocierać się o limit czasu funkcji (60 s). Dlatego każdą drużynę można odświeżać osobnym żądaniem — endpoint `/api/poll/<clubId>` przetwarza tylko jeden klub:
+```bash
+curl "https://twoja-app.vercel.app/api/poll/2173191?key=<POLL_SECRET>"
+curl "https://twoja-app.vercel.app/api/poll/2173293?key=<POLL_SECRET>"
+curl "https://twoja-app.vercel.app/api/poll/2173396?key=<POLL_SECRET>"
+```
+Autoryzacja i format odpowiedzi są takie same jak w `/api/poll`. Wywołania rozkładasz po swojej stronie (np. scheduler odpala je osobno dla każdej drużyny).
+
 > ⚠️ **Pierwszy poll = baza odniesienia.** Strava oddaje tylko ostatnie ~200 aktywności klubu **bez dat**, więc cały backlog widoczny przy pierwszym kontakcie z feedem zapisujemy z `counted=false` (tylko deduplikacja) i **nie wliczamy** go do statystyk — inaczej cała historia wpadłaby do bieżącego tygodnia. Liczą się dopiero aktywności zauważone w kolejnych pollach. W odpowiedzi pierwszego polla zobaczysz `baseline: true`.
 >
 > 💡 Chcesz to mieć automatycznie? Podłącz dowolny zewnętrzny scheduler (GitHub Actions, cron-job.org, EasyCron) uderzający w ten sam URL co godzinę.
@@ -110,5 +118,6 @@ legacy-php/             # poprzednia wersja PHP (referencja, poza buildem)
 - `/` — dashboard 🔒 (Basic Auth, `DASHBOARD_PASSWORD`)
 - `/auth` — autoryzacja drużyn (otwarte — koledzy autoryzują bez hasła)
 - `/api/stats` — JSON ze statystykami 🔒 (odświeżany co 5 min po stronie klienta)
-- `/api/poll` — ręczny trigger pollingu, `?key=<POLL_SECRET>` (chroniony `POLL_SECRET`)
+- `/api/poll` — ręczny trigger pollingu wszystkich drużyn, `?key=<POLL_SECRET>` (chroniony `POLL_SECRET`)
+- `/api/poll/<clubId>` — polling jednej drużyny (rozkłada pracę na osobne żądania), `?key=<POLL_SECRET>`
 - `/api/seed` — dane demo (tylko gdy `ALLOW_SEED=1`)
