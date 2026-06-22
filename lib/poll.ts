@@ -11,8 +11,17 @@ import { currentWeekKey } from './week';
 export type PollResult = {
   ran_at: string;
   week_key: string;
-  clubs: { id: number; name: string; status: string; seen?: number; new?: number; baseline?: boolean }[];
+  clubs: { id: number; name: string; status: string; seen?: number; new?: number; decounted?: number; baseline?: boolean }[];
 };
+
+// Gdy ktoś edytuje aktywność w Stravie (np. zmienia nazwę albo typ sportu),
+// kolejny poll widzi ją z innym odciskiem palca i zapisałby ją jako nową — a
+// dystans, czas i przewyższenie się nie zmieniają, więc ta sama aktywność
+// liczyłaby się dwa razy. Dlatego po dopisaniu nowej, liczonej aktywności
+// wyłączamy z liczenia (counted=FALSE) wcześniejsze wpisy tego samego
+// zawodnika o identycznych metrykach (dystans/czas/przewyższenie), które
+// trafiły do bazy w ciągu ostatniej godziny — zostaje tylko najnowsza wersja.
+const EDIT_DEDUP_WINDOW_HOURS = 1;
 
 /**
  * Czy to pierwszy poll tego klubu? Feed Stravy nie zwraca dat, więc backlog
@@ -55,7 +64,11 @@ export async function runPoll(clubId?: number): Promise<PollResult> {
   await syncClubs(clubs);
 
   const c = db();
-  const now = DateTime.now().setZone(timezone).toISO()!;
+  const nowDt = DateTime.now().setZone(timezone);
+  const now = nowDt.toISO()!;
+  // Granica okna „edycji": wcześniejsze wersje tej samej aktywności wyłączamy
+  // z liczenia tylko, jeśli trafiły do bazy w ciągu ostatniej godziny.
+  const editWindowStart = nowDt.minus({ hours: EDIT_DEDUP_WINDOW_HOURS }).toISO()!;
   const weekKey = currentWeekKey();
   const result: PollResult = { ran_at: now, week_key: weekKey, clubs: [] };
 
@@ -82,6 +95,7 @@ export async function runPoll(clubId?: number): Promise<PollResult> {
     const counted = !baseline;
 
     let newCount = 0;
+    let decounted = 0;
     for (const a of activities) {
       // Tylko imię (firstname) — w obrębie klubu imiona się nie powtarzają,
       // więc inicjał nazwiska jest zbędny. Strava w feedzie klubowym i tak
@@ -111,6 +125,38 @@ export async function runPoll(clubId?: number): Promise<PollResult> {
         ],
       });
       newCount += res.rowsAffected;
+
+      // Świeżo dopisana, liczona aktywność? Sprawdź, czy nie jest to edycja
+      // (zmiana nazwy/typu) czegoś, co już złapaliśmy w ciągu ostatniej godziny.
+      // Jeśli tak — wyłącz starsze wersje z liczenia, zostaw tylko tę najnowszą.
+      // Metryki dystans/przewyższenie porównujemy zaokrąglone, tak jak liczy je
+      // fingerprint (Math.round), żeby drobne różnice float się nie rozjechały.
+      if (counted && res.rowsAffected > 0) {
+        const upd = await c.execute({
+          sql: `UPDATE activities
+                   SET counted = FALSE
+                 WHERE club_id = ?
+                   AND counted = TRUE
+                   AND fingerprint <> ?
+                   AND athlete_name = ?
+                   AND ROUND(distance) = ?
+                   AND moving_time = ?
+                   AND elapsed_time = ?
+                   AND ROUND(elevation) = ?
+                   AND first_seen >= ?`,
+          args: [
+            club.id,
+            fp,
+            athlete,
+            Math.round(a.distance ?? 0),
+            Math.trunc(a.moving_time ?? 0),
+            Math.trunc(a.elapsed_time ?? 0),
+            Math.round(a.total_elevation_gain ?? 0),
+            editWindowStart,
+          ],
+        });
+        decounted += upd.rowsAffected;
+      }
     }
 
     await c.execute({
@@ -123,6 +169,7 @@ export async function runPoll(clubId?: number): Promise<PollResult> {
       status: baseline ? 'ok (baza odniesienia)' : 'ok',
       seen: activities.length,
       new: newCount,
+      decounted,
       baseline,
     });
   }

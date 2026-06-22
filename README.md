@@ -68,7 +68,9 @@ curl "https://twoja-app.vercel.app/api/poll?key=<POLL_SECRET>"
 # lub nagłówkiem:
 curl -H "Authorization: Bearer <POLL_SECRET>" https://twoja-app.vercel.app/api/poll
 ```
-Endpoint pobiera aktywności wszystkich drużyn i zapisuje nowe (deduplikacja po odcisku palca). Zwraca JSON z podsumowaniem (`seen`/`new`/`baseline` na drużynę).
+Endpoint pobiera aktywności wszystkich drużyn i zapisuje nowe (deduplikacja po odcisku palca). Zwraca JSON z podsumowaniem (`seen`/`new`/`decounted`/`baseline` na drużynę).
+
+> ℹ️ **Edycja aktywności (nazwa/typ).** Odcisk palca obejmuje nazwę i typ aktywności, więc po zmianie którejś z nich w Stravie kolejny poll widziałby aktywność jako nową i liczyłby ją drugi raz — choć dystans, czas i przewyższenie się nie zmieniły. Dlatego po dopisaniu nowej wersji wyłączamy z liczenia (`counted=FALSE`) wcześniejsze wpisy tego samego zawodnika o **identycznych metrykach** (dystans/czas/przewyższenie), które trafiły do bazy w **ciągu ostatniej godziny** — liczy się tylko najnowsza wersja. Liczbę tak wyłączonych wpisów zwraca pole `decounted`.
 
 **Polling per drużyna.** Przy dużej liczbie aktywności poll wszystkich drużyn naraz może ocierać się o limit czasu funkcji (60 s). Dlatego każdą drużynę można odświeżać osobnym żądaniem — endpoint `/api/poll/<clubId>` przetwarza tylko jeden klub:
 ```bash
